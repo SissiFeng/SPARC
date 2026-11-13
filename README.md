@@ -1,6 +1,6 @@
 # SPARC
 
-Sparse Predictive Aggregation of Regression Components. Version 2.5.3rc5.
+Sparse Predictive Aggregation of Regression Components. Version 2.5.3rc6.
 
 ## Install
 
@@ -86,10 +86,39 @@ Verification retains the manuscript's Ridge-proxy influence definition: the abso
 
 `sparc.llm:make_comparison` accepts an external provider returning parsed JSON. Configuration requires `mode`, `provider`, `model_snapshot`, `feature_names`, `prompts` and `decoding`. Standalone mode returns selected features and numerical predictions. Hybrid mode returns a feature strategy and model hypotheses for SPARC to fit on the training partition. Requests, responses and selected configurations are saved with each fold. The interface supplies no assumed historical snapshots or prompts.
 
+## Molecular representations
+
+Install the optional dependencies from the repository root:
+
+```bash
+python -m pip install -r requirements-representations.txt
+```
+
+Edit `examples/run_polymer_representations.py` to specify the input table, feature and target columns, SMILES columns, output directory and representation methods. Run it with:
+
+```bash
+python examples/run_polymer_representations.py
+```
+
+`pretrained_gnn` loads a local checkpoint or an `s3://bucket/key` checkpoint through the existing AWS credential chain. S3 input requires a SHA-256 checksum and optionally accepts an object version ID. Set the model factory, molecular featurizer, architecture parameters and checkpoint state-dictionary key to match the trained encoder. Loading is strict: absent weights and incompatible parameter shapes raise errors. No model weights or AWS credentials are distributed with this package.
+
+The supplied graph network supports GCN, GIN and GraphSAGE layers, configurable hidden dimensions, embedding width, activation and dropout. An external model factory and featurizer can adapt an existing encoder. Node outputs support mean, sum or max pooling; graph outputs can be used directly. `random_gnn` is a separately named optional control with a configurable initialization seed. Encoders are frozen during feature extraction. The built-in defaults are configurable software examples, not identification of an archived AWS architecture or reproduction of a manuscript score.
+
+`chemberta` accepts a local checkpoint or a Hugging Face model pinned to a full commit revision, with explicit CLS or mean pooling. `mat2vec` requires a supplied Word2Vec or KeyedVectors checkpoint and computes an atomic-fraction-weighted mean of element vectors. One or two SMILES columns are supported; monomer representations can be concatenated, averaged, or combined using the mean and absolute difference. Missing checkpoints, invalid molecules and missing element tokens raise errors.
+
+The comparison runner uses shared outer partitions and seeds for the baseline and augmented inputs. It refits SPARC within each training partition and saves input columns, encoder settings, weight checksums, fold assignments, held-out predictions and pooled metrics per seed. The default outer evaluation is leave-one-out; explicit groups use leave-one-group-out, and an explicitly selected fold count enables k-fold evaluation. Target and ID columns are excluded from baseline features. Hyperparameters chosen by the user must be fixed independently of outer-test results.
+
 ## Validation and reuse
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+For the optional representation tests as well as the core tests:
+
+```bash
+python -m pip install '.[representations,test]'
+python -m pytest -q
 ```
 
 Tests check numerical invariants, held-out evidence, acquisition behavior, solver contracts and workflow outputs. Mocked solver tests do not replace real posterior sampling or dataset-level reproduction. Historical paper inputs and figure results are not included in this source package.

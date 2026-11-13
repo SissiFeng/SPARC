@@ -20,7 +20,7 @@ from .preprocessing import Preprocessor
 from .uncertainty import resolve_reference_scale, response_scale, total_uncertainty, trust_score
 from .workflow import Agent, Modeller, Planner
 
-__version__ = "2.5.3rc5"
+__version__ = "2.5.3rc6"
 __all__ = [
     "SparseEvidenceEnsemble",
     "WEIGHT_STRATEGIES",
