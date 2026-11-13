@@ -9,6 +9,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.validation import check_is_fitted
+from scipy.linalg import solve_triangular
 
 __all__ = ["GPExpertMixture", "EXPERT_NAMES", "uncertainty_inflation_ratio"]
 EXPERT_NAMES: Tuple[str, ...] = ("matern52_isotropic", "rbf_ard", "rbf_rf_importance")
@@ -41,10 +42,35 @@ class _FittedExpert:
         self.scaler = scaler
         self.feature_scale = feature_scale
 
-    def predict(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def _latent(self, X: np.ndarray, full_cov: bool):
+        Z = self.scaler.transform(X) * self.feature_scale
+        latent = self.model.kernel_.k1
+        K_trans = latent(Z, self.model.X_train_)
+        mean = K_trans @ self.model.alpha_
+        V = solve_triangular(self.model.L_, K_trans.T, lower=True, check_finite=False)
+        y_std = np.asarray(self.model._y_train_std, dtype=np.float64)
+        y_mean = np.asarray(self.model._y_train_mean, dtype=np.float64)
+        mean = np.asarray(mean, dtype=np.float64).reshape(-1) * y_std + y_mean
+        if full_cov:
+            cov = latent(Z) - V.T @ V
+            return mean, cov * y_std**2
+        var = latent.diag(Z) - np.einsum("ij,ij->j", V, V)
+        return mean, np.maximum(var, 0.0) * y_std**2
+
+    def predict(self, X: np.ndarray, latent: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+        if latent:
+            mean, var = self._latent(X, full_cov=False)
+            return (mean, np.sqrt(var))
         Z = self.scaler.transform(X) * self.feature_scale
         mean, sd = self.model.predict(Z, return_std=True)
         return (np.asarray(mean, dtype=np.float64), np.asarray(sd, dtype=np.float64))
+
+    def sample(self, X: np.ndarray, rng: np.random.RandomState) -> np.ndarray:
+        mean, cov = self._latent(X, full_cov=True)
+        cov = 0.5 * (cov + cov.T)
+        values, vectors = np.linalg.eigh(cov)
+        values = np.clip(values, 0.0, None)
+        return mean + vectors @ (np.sqrt(values) * rng.normal(size=len(mean)))
 
 
 def _noise_kernel() -> WhiteKernel:
@@ -121,6 +147,7 @@ class GPExpertMixture(BaseEstimator, RegressorMixin):
         n_experts = len(EXPERT_NAMES)
         mu_oof = np.empty((n_experts, len(y)), dtype=np.float64)
         sd_oof = np.empty((n_experts, len(y)), dtype=np.float64)
+        latent_oof = np.empty((n_experts, len(y)), dtype=np.float64)
         splitter = KFold(
             n_splits=n_splits, shuffle=True, random_state=self.random_state
         )
@@ -131,15 +158,17 @@ class GPExpertMixture(BaseEstimator, RegressorMixin):
                 expert = _fit_expert(
                     index, X_train, y[train], self.cv_n_restarts, self.random_state
                 )
-                mean, sd = expert.predict(X_test)
+                mean, sd = expert.predict(X_test, latent=False)
+                _, latent_sd = expert.predict(X_test, latent=True)
                 mu_oof[index, test] = mean
                 sd_oof[index, test] = np.maximum(sd, 1e-09)
+                latent_oof[index, test] = latent_sd
         loglik = (
             -0.5 * np.log(2.0 * np.pi)
             - np.log(sd_oof)
             - 0.5 * ((y[None, :] - mu_oof) / sd_oof) ** 2
         )
-        return (np.mean(loglik, axis=1), mu_oof, sd_oof)
+        return (np.sum(loglik, axis=1), mu_oof, latent_oof)
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "GPExpertMixture":
         X = np.asarray(X, dtype=np.float64)
@@ -150,14 +179,15 @@ class GPExpertMixture(BaseEstimator, RegressorMixin):
             raise ValueError("GPExpertMixture requires at least 5 samples")
         if not np.isfinite(y).all():
             raise ValueError("y must contain only finite values")
-        scores, mu_oof, sd_oof = self._cross_validated_experts(X, y)
+        scores, mu_oof, latent_oof = self._cross_validated_experts(X, y)
         shifted = scores - np.max(scores)
         weights = np.exp(shifted)
         weights /= weights.sum()
         self.expert_log_likelihoods_ = scores
         self.expert_weights_ = weights
         self.oof_expert_predictions_ = mu_oof
-        self.oof_expert_sd_ = sd_oof
+        self.oof_expert_sd_ = latent_oof
+        self.weighting_ = "pseudo_bma_sum_of_cv_log_predictive_densities"
         oof_mean = np.empty(len(y), dtype=np.float64)
         oof_within = np.empty(len(y), dtype=np.float64)
         oof_between = np.empty(len(y), dtype=np.float64)
@@ -175,7 +205,7 @@ class GPExpertMixture(BaseEstimator, RegressorMixin):
             fold_weights = np.exp(inner_scores - np.max(inner_scores))
             fold_weights /= fold_weights.sum()
             mean, within, between = _mixture_moments(
-                mu_oof[:, test], sd_oof[:, test], fold_weights
+                mu_oof[:, test], latent_oof[:, test], fold_weights
             )
             oof_mean[test], oof_within[test], oof_between[test] = (
                 mean,
@@ -231,6 +261,17 @@ class GPExpertMixture(BaseEstimator, RegressorMixin):
             np.sqrt(np.maximum(between, 0.0)),
             np.sqrt(np.maximum(within + between, 0.0)),
         )
+
+    def sample_joint(self, X: np.ndarray, random_state=None) -> np.ndarray:
+        check_is_fitted(self, "experts_")
+        rng = (
+            random_state
+            if isinstance(random_state, np.random.RandomState)
+            else np.random.RandomState(random_state)
+        )
+        X_model = self.imputer_.transform(np.asarray(X, dtype=np.float64))
+        expert = int(rng.choice(len(self.experts_), p=self.expert_weights_))
+        return self.experts_[expert].sample(X_model, rng)
 
     def predict_with_trust(
         self, X: np.ndarray, reference_scale: float = 1.0

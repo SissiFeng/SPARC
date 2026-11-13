@@ -7,7 +7,8 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, WhiteKernel
 from .acquisition import BootstrapEnsemble, trust_weighted_confidence_bound
 from .preprocessing import Preprocessor
-from .uncertainty import trust_score
+from .uncertainty import resolve_reference_scale, trust_score
+from scipy.linalg import cho_solve
 
 __all__ = [
     "run_finite_pool_search",
@@ -17,6 +18,7 @@ __all__ = [
     "gp_reference_model",
     "rf_reference_model",
     "bootstrap_model",
+    "bayesian_model",
 ]
 
 
@@ -37,6 +39,16 @@ class GPReferenceModel:
             random_state=self.random_state,
             alpha=1e-06,
         ).fit(self.preprocessor_.transform(X), y)
+        L = self.model_.L_
+        K_inv = cho_solve((L, True), np.eye(L.shape[0]))
+        alpha = np.asarray(self.model_.alpha_, dtype=np.float64).reshape(-1)
+        y_std = float(np.asarray(self.model_._y_train_std).reshape(-1)[0])
+        residual = alpha / np.diag(K_inv) * y_std
+        self.oof_predictions_ = np.asarray(y, dtype=np.float64) - residual
+        self.residual_scale_ = float(
+            1.4826 * np.median(np.abs(residual - np.median(residual)))
+        )
+        self.residual_method_ = "closed_form_gp_loo"
         return self
 
     def predict_with_uncertainty(self, X: np.ndarray):
@@ -52,14 +64,38 @@ class RFReferenceModel:
     def fit(self, X: np.ndarray, y: np.ndarray) -> "RFReferenceModel":
         self.preprocessor_ = Preprocessor().fit(X)
         self.model_ = RandomForestRegressor(
-            n_estimators=self.n_estimators, random_state=self.random_state, n_jobs=-1
+            n_estimators=self.n_estimators,
+            random_state=self.random_state,
+            n_jobs=-1,
+            oob_score=True,
         ).fit(self.preprocessor_.transform(X), y)
+        oob = np.asarray(self.model_.oob_prediction_, dtype=np.float64)
+        counts = np.zeros(len(y), dtype=np.int64)
+        for sampled in self.model_.estimators_samples_:
+            counts += np.bincount(sampled, minlength=len(y)) == 0
+        self.oob_counts_ = counts
+        if not np.isfinite(oob).all() or np.any(counts == 0):
+            raise RuntimeError(
+                "every training row needs an out-of-bag prediction; increase n_estimators"
+            )
+        residual = np.asarray(y, dtype=np.float64) - oob
+        self.oof_predictions_ = oob
+        self.residual_scale_ = float(
+            1.4826 * np.median(np.abs(residual - np.median(residual)))
+        )
+        self.residual_method_ = "out_of_bag"
         return self
 
     def predict_with_uncertainty(self, X: np.ndarray):
         Z = self.preprocessor_.transform(X)
         per_tree = np.stack([tree.predict(Z) for tree in self.model_.estimators_])
         return (per_tree.mean(axis=0), per_tree.std(axis=0))
+
+
+def bayesian_model(seed: int, weight_strategy="simplex", global_scale=1.0):
+    from .ensemble import SparseEvidenceEnsemble
+
+    return SparseEvidenceEnsemble(random_state=seed, weight_strategy=weight_strategy, global_scale=global_scale)
 
 
 def bootstrap_model(seed: int) -> BootstrapEnsemble:
@@ -82,7 +118,7 @@ def run_finite_pool_search(
     model_factory: Optional[Callable[[int], object]] = None,
     use_trust: bool = True,
     beta: float = 1.96,
-    reference_scale: float = 1.0,
+    reference_scale="training_mad",
     n_evaluations: Optional[int] = None,
     random_state: int = 42,
 ) -> pd.DataFrame:
@@ -126,10 +162,9 @@ def run_finite_pool_search(
         mean, uncertainty = model.predict_with_uncertainty(X[remaining])
         mean = np.asarray(mean, dtype=np.float64)
         uncertainty = np.asarray(uncertainty, dtype=np.float64)
+        q = resolve_reference_scale(reference_scale, y[labelled])
         if use_trust:
-            trust = trust_score(
-                uncertainty, float(model.residual_scale_), reference_scale
-            )
+            trust = trust_score(uncertainty, float(model.residual_scale_), q)
         else:
             trust = np.ones_like(mean)
         score = trust_weighted_confidence_bound(
@@ -147,9 +182,17 @@ def run_finite_pool_search(
                 "y": float(y[chosen]),
                 "best_so_far": float(best),
                 "phase": "acquired",
+                "weight_strategy": getattr(model, "weight_strategy_", None),
+                "global_scale": getattr(model, "global_scale", None),
+                "rho_posterior_median": getattr(model, "diagnostics_", {}).get("rho_posterior", {}).get("median"),
+                "effective_models_mean": getattr(model, "sparsity_", {}).get("effective_models_mean"),
                 "predicted_mean": float(mean[position]),
                 "uncertainty": float(uncertainty[position]),
                 "trust": float(trust[position]),
+                "reference_scale": float(q),
+                "residual_scale": float(model.residual_scale_),
+                "trust_median_pool": float(np.median(trust)),
+                "bonus_max_pool": float(np.max(beta * uncertainty * trust)),
                 "acquisition_score": float(score[position]),
             }
         )

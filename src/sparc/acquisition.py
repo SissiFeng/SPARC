@@ -49,8 +49,8 @@ def trust_weighted_confidence_bound(
     maximize: bool = True,
 ) -> np.ndarray:
     mean, uncertainty, trust = _validate_trust_inputs(mean, uncertainty, trust)
-    if beta < 0:
-        raise ValueError("beta must be non-negative")
+    if not np.isfinite(beta) or beta < 0:
+        raise ValueError("beta must be finite and non-negative")
     direction = 1.0 if maximize else -1.0
     return direction * mean + float(beta) * uncertainty * trust
 
@@ -67,25 +67,23 @@ def trust_weighted_lcb(
     mean: np.ndarray, uncertainty: np.ndarray, trust: np.ndarray, beta: float = 1.96
 ) -> np.ndarray:
     mean, uncertainty, trust = _validate_trust_inputs(mean, uncertainty, trust)
-    if beta < 0:
-        raise ValueError("beta must be non-negative")
+    if not np.isfinite(beta) or beta < 0:
+        raise ValueError("beta must be finite and non-negative")
     return mean - float(beta) * uncertainty * trust
 
 
 def trust_weighted_thompson(
     mean: np.ndarray,
-    uncertainty: np.ndarray,
     trust: np.ndarray,
+    joint_sample: np.ndarray,
     maximize: bool = True,
-    random_state: Optional[int | np.random.RandomState] = None,
 ) -> np.ndarray:
-    mean, uncertainty, trust = _validate_trust_inputs(mean, uncertainty, trust)
-    if isinstance(random_state, np.random.RandomState):
-        z = random_state.normal(size=mean.shape)
-    else:
-        z = np.random.RandomState(random_state).normal(size=mean.shape)
+    joint_sample = np.asarray(joint_sample, dtype=np.float64)
+    mean, _, trust = _validate_trust_inputs(mean, np.zeros_like(joint_sample), trust)
+    if joint_sample.shape != mean.shape or not np.isfinite(joint_sample).all():
+        raise ValueError("joint_sample must be a finite draw aligned with mean")
     direction = 1.0 if maximize else -1.0
-    return direction * mean + uncertainty * trust * z
+    return direction * (mean + trust * (joint_sample - mean))
 
 
 def lcb(mean: np.ndarray, uncertainty: np.ndarray, kappa: float = 2.0) -> np.ndarray:
@@ -200,6 +198,7 @@ class BootstrapEnsemble:
             1.4826 * np.median(np.abs(residual - np.median(residual)))
         )
         self.aleatoric_ = self.residual_scale_
+        self.y_train_ = y.copy()
         return self
 
     def predict(self, X: np.ndarray):
@@ -214,9 +213,22 @@ class BootstrapEnsemble:
     def predict_with_uncertainty(self, X: np.ndarray):
         return self.predict(X)
 
-    def predict_with_trust(self, X: np.ndarray, reference_scale: float = 1.0):
-        from .uncertainty import trust_score
+    def sample_joint(self, X: np.ndarray, random_state=None) -> np.ndarray:
+        if not self._fitted:
+            raise RuntimeError("BootstrapEnsemble is not fitted")
+        rng = (
+            random_state
+            if isinstance(random_state, np.random.RandomState)
+            else np.random.RandomState(random_state)
+        )
+        b = int(rng.randint(len(self._fitted)))
+        X = np.asarray(X, dtype=np.float64)
+        return self._fitted[b].predict(self._scalers[b].transform(X))
+
+    def predict_with_trust(self, X: np.ndarray, reference_scale="training_mad"):
+        from .uncertainty import resolve_reference_scale, trust_score
 
         mean, uncertainty = self.predict(X)
-        trust = trust_score(uncertainty, self.residual_scale_, reference_scale)
+        q = resolve_reference_scale(reference_scale, self.y_train_)
+        trust = trust_score(uncertainty, self.residual_scale_, q)
         return (mean, uncertainty, trust)

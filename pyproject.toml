@@ -4,18 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sparc"
-version = "2.5.3rc4"
+version = "2.5.3rc6"
 description = "Sparse Predictive Aggregation of Regression Components"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-authors = [{name = "Acceleration Consortium, University of Toronto"}]
+authors = [{name = "Sissi Feng"}]
 dependencies = [
     "numpy==1.26.4",
     "scipy==1.15.2",
     "scikit-learn==1.6.1",
     "pandas==3.0.1",
+    "joblib==1.6.0",
     "numpyro==0.19.0",
     "jax==0.4.38",
     "jaxlib==0.4.38",
@@ -23,6 +24,16 @@ dependencies = [
 
 [project.optional-dependencies]
 shap = ["shap==0.49.1"]
+excel = ["openpyxl==3.1.5"]
+representations = [
+    "rdkit==2025.9.3",
+    "torch==2.8.0",
+    "torch-geometric==2.6.1",
+    "transformers==4.57.1",
+    "gensim==4.4.0",
+    "boto3==1.40.76",
+]
+test = ["pytest==8.4.2"]
 
 [project.scripts]
 sparc-figure-data = "sparc.figure_data:main"

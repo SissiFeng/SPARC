@@ -1,12 +1,11 @@
 from __future__ import annotations
-import logging
 from typing import Dict, Optional, Tuple
 import numpy as np
 from sklearn.base import clone
 from sklearn.linear_model import Lasso
 from sklearn.model_selection import KFold, LeaveOneOut
+from .weighting import compose_weights, summarize_coefficients, validate_weight_strategy
 
-logger = logging.getLogger(__name__)
 __all__ = [
     "evidence_matrix",
     "stability_screen",
@@ -83,6 +82,8 @@ def stability_screen(
     inner_splits="loo",
     random_state=42,
     transformer_factory=None,
+    lasso_alpha=0.01,
+    n_jobs=1,
 ):
     X, y = (np.asarray(X), np.asarray(y, dtype=float))
     n, m = (len(y), len(models))
@@ -102,11 +103,12 @@ def stability_screen(
             y[indices],
             inner_splits=inner_splits,
             transformer_factory=transformer_factory,
+            n_jobs=n_jobs,
         )
         scale = 1.4826 * np.median(np.abs(y[indices] - np.median(y[indices])))
         if scale <= 1e-12:
             scale = max(float(np.std(y[indices])), 1.0)
-        support = Lasso(alpha=0.01, positive=True, max_iter=10000).fit(
+        support = Lasso(alpha=float(lasso_alpha), positive=True, max_iter=10000).fit(
             P / scale, y[indices] / scale
         )
         selected[trial] = support.coef_ > 1e-05
@@ -117,7 +119,7 @@ def stability_screen(
     return (active, frequencies)
 
 
-def importance_loo_predictive(P, y, weight_samples, sigma2_samples, max_rel_weight=0.1):
+def importance_loo_predictive(P, y, weight_samples, sigma2_samples):
     P, y = (np.asarray(P, dtype=float), np.asarray(y, dtype=float))
     W, variance = (
         np.asarray(weight_samples, dtype=float),
@@ -129,9 +131,8 @@ def importance_loo_predictive(P, y, weight_samples, sigma2_samples, max_rel_weig
         raise ValueError("one strictly positive variance per posterior draw required")
     if not all((np.isfinite(a).all() for a in (P, y, W, variance))):
         raise ValueError("importance-sampling inputs must be finite")
-    if not 0 < max_rel_weight <= 1:
-        raise ValueError("max_rel_weight must lie in (0, 1]")
     predictions = W @ P.T
+    cap = 1.0 / np.sqrt(len(W))
     result = np.empty(len(y))
     for i in range(len(y)):
         ratios = 0.5 * np.log(variance) + (y[i] - predictions[:, i]) ** 2 / (
@@ -141,10 +142,27 @@ def importance_loo_predictive(P, y, weight_samples, sigma2_samples, max_rel_weig
             raise FloatingPointError("inverse likelihood overflow")
         ratios = np.exp(ratios - ratios.max())
         ratios /= ratios.sum()
-        ratios = np.minimum(ratios, max_rel_weight)
+        ratios = np.minimum(ratios, cap)
         ratios /= ratios.sum()
         result[i] = ratios @ predictions[:, i]
     return result
+
+
+
+def _sampling_converged(rhat, neff, divergences, noise_rhat, noise_ess,
+                        rhat_threshold=1.01, neff_threshold=400):
+    rhat, neff = np.asarray(rhat), np.asarray(neff)
+    return bool(
+        np.isfinite(rhat).all()
+        and np.isfinite(neff).all()
+        and (rhat < rhat_threshold).all()
+        and (neff > neff_threshold).all()
+        and np.isfinite(noise_rhat)
+        and np.isfinite(noise_ess)
+        and noise_rhat < rhat_threshold
+        and noise_ess > neff_threshold
+        and divergences == 0
+    )
 
 
 def solve_weights_bayes(
@@ -158,7 +176,10 @@ def solve_weights_bayes(
     neff_threshold: int = 400,
     random_seed: int = 0,
     family_scales: Optional[np.ndarray] = None,
+    weight_strategy: str = "simplex",
+    global_scale: float = 1.0,
 ) -> Tuple[np.ndarray, np.ndarray, Dict]:
+    validate_weight_strategy(weight_strategy, global_scale)
     try:
         import jax
         import jax.numpy as jnp
@@ -185,7 +206,7 @@ def solve_weights_bayes(
             raise ValueError(f"family_scales must have shape {(m,)}")
         if not np.isfinite(scales).all() or np.any(scales <= 0):
             raise ValueError("family_scales must be finite and strictly positive")
-    if m == 1:
+    if m == 1 and weight_strategy == "simplex":
         from scipy.stats import invgamma
 
         n_draws = int(num_samples) * int(num_chains)
@@ -209,17 +230,22 @@ def solve_weights_bayes(
                 "sigma2_samples": sigma_flat,
                 "prior": "saas_halfcauchy_invgamma_1_1_simplex",
                 "family_scales": scales.tolist(),
+                "weight_strategy": weight_strategy,
+                "global_scale": float(global_scale),
+                "global_shrinkage_effective": False,
+                "sparsity": summarize_coefficients(np.ones((n_draws, 1))),
             },
         )
 
     def model(P_, y_, scales_):
-        rho = numpyro.sample("rho", dist.HalfCauchy(scale=1.0))
+        rho = numpyro.sample("rho", dist.HalfCauchy(scale=global_scale))
         local_unit = numpyro.sample("local_unit", dist.HalfCauchy(scale=jnp.ones(m)))
         magnitude_unit = numpyro.sample("magnitude_unit", dist.HalfNormal(jnp.ones(m)))
         tau = numpyro.deterministic("tau", rho * scales_ * local_unit)
         numpyro.deterministic("alpha", tau * magnitude_unit)
-        log_alpha = jnp.log(scales_) + jnp.log(local_unit) + jnp.log(magnitude_unit)
-        weights = numpyro.deterministic("weights", jax.nn.softmax(log_alpha))
+        weights = numpyro.deterministic(
+            "weights", compose_weights(rho, scales_, local_unit, magnitude_unit, weight_strategy, xp=jnp)
+        )
         sigma_sq = numpyro.sample(
             "sigma_sq", dist.InverseGamma(concentration=1.0, rate=1.0)
         )
@@ -230,6 +256,7 @@ def solve_weights_bayes(
     y_j = jnp.asarray(y, dtype=jnp.float32)
     scales_j = jnp.asarray(scales, dtype=jnp.float32)
     attempts = []
+    posterior_scales = {}
 
     def run(warmup: int, seed: int):
         mcmc = MCMC(
@@ -239,19 +266,32 @@ def solve_weights_bayes(
             num_chains=num_chains,
             progress_bar=False,
         )
-        mcmc.run(jax.random.PRNGKey(seed), P_=P_j, y_=y_j, scales_=scales_j)
+        mcmc.run(
+            jax.random.PRNGKey(seed),
+            P_=P_j,
+            y_=y_j,
+            scales_=scales_j,
+            extra_fields=("diverging",),
+        )
         grouped = mcmc.get_samples(group_by_chain=True)
         chains = np.asarray(grouped["weights"])
         sigma_chains = np.asarray(grouped["sigma_sq"])
         flat = chains.reshape(-1, chains.shape[-1])
         sigma_flat = sigma_chains.reshape(-1)
+        rho_chains = np.asarray(grouped["rho"])
+        local_chains = np.asarray(grouped["local_unit"])
+        posterior_scales.update({
+            "rho": rho_chains.reshape(-1),
+            "local": local_chains.reshape(-1, m),
+        })
         rhat = np.array(
             [gelman_rubin(chains[:, :, j]) for j in range(chains.shape[-1])]
         )
         neff = np.array(
             [effective_sample_size(chains[:, :, j]) for j in range(chains.shape[-1])]
         )
-        extra = mcmc.get_extra_fields() if hasattr(mcmc, "get_extra_fields") else {}
+        extra = mcmc.get_extra_fields()
+        divergences = int(np.asarray(extra["diverging"]).sum())
         attempts.append(
             {
                 "warmup": int(warmup),
@@ -262,32 +302,42 @@ def solve_weights_bayes(
                 "weight_ess": neff.tolist(),
                 "noise_rhat": float(gelman_rubin(sigma_chains)),
                 "noise_ess": float(effective_sample_size(sigma_chains)),
-                "divergences": int(np.asarray(extra["diverging"]).sum())
-                if "diverging" in extra
-                else None,
+                "rho_rhat": float(gelman_rubin(rho_chains)),
+                "rho_ess": float(effective_sample_size(rho_chains)),
+                "local_rhat": np.asarray(gelman_rubin(local_chains)).tolist(),
+                "local_ess": np.asarray(effective_sample_size(local_chains)).tolist(),
+                "divergences": divergences,
             }
         )
-        return (flat, sigma_flat, rhat, neff)
+        return (flat, sigma_flat, rhat, neff, divergences)
 
-    def passes(rhat, neff):
-        return bool(
-            np.isfinite(rhat).all()
-            and np.isfinite(neff).all()
-            and (rhat < rhat_threshold).all()
-            and (neff > neff_threshold).all()
+    def passes(rhat, neff, divergences):
+        passed = _sampling_converged(
+            rhat, neff, divergences,
+            attempts[-1]["noise_rhat"], attempts[-1]["noise_ess"],
+            rhat_threshold, neff_threshold,
         )
+        if weight_strategy == "global_local":
+            passed = passed and _sampling_converged(
+                attempts[-1]["local_rhat"], attempts[-1]["local_ess"], divergences,
+                attempts[-1]["rho_rhat"], attempts[-1]["rho_ess"],
+                rhat_threshold, neff_threshold,
+            )
+        return passed
 
-    flat, sigma_flat, rhat, neff = run(num_warmup, random_seed)
-    if not passes(rhat, neff):
-        flat, sigma_flat, rhat, neff = run(num_warmup * 2, random_seed + 1)
+    flat, sigma_flat, rhat, neff, divergences = run(num_warmup, random_seed)
+    if not passes(rhat, neff, divergences):
+        flat, sigma_flat, rhat, neff, divergences = run(num_warmup * 2, random_seed + 1)
     mean = flat.mean(axis=0)
     std = flat.std(axis=0)
     total = mean.sum()
-    weights = mean / total if total > 1e-12 else np.ones_like(mean) / len(mean)
-    converged = passes(rhat, neff)
+    weights = mean
+    if weight_strategy == "simplex":
+        weights = mean / total if total > 1e-12 else np.ones_like(mean) / len(mean)
+    converged = passes(rhat, neff, divergences)
     if not converged:
         raise RuntimeError(
-            f"Bayesian weight sampler did not meet convergence thresholds after retry; rhat={rhat.tolist()}, neff={neff.tolist()}. Unconverged draws must not produce reportable benchmark predictions."
+            f"Bayesian weight sampler did not meet convergence thresholds after retry: {attempts[-1]}. Unconverged draws must not produce reportable benchmark predictions."
         )
     diagnostics = {
         "rhat": rhat.tolist(),
@@ -295,19 +345,28 @@ def solve_weights_bayes(
         "weight_samples": flat,
         "sigma2_samples": sigma_flat,
         "converged": converged,
-        "prior": "saas_halfcauchy_invgamma_1_1_simplex",
+        "prior": "saas_halfcauchy_invgamma_1_1_simplex" if weight_strategy == "simplex" else "positive_global_local_halfcauchy_invgamma_1_1",
+        "weight_strategy": weight_strategy,
+        "global_scale": float(global_scale),
+        "global_shrinkage_effective": weight_strategy == "global_local",
+        "sparsity": summarize_coefficients(flat),
+        "rho_posterior": {
+            "median": float(np.median(posterior_scales["rho"])),
+            "interval_90": np.quantile(posterior_scales["rho"], [0.05, 0.95]).tolist(),
+            "informs_likelihood": weight_strategy == "global_local",
+        },
+        "local_scale_posterior": {
+            "median": np.median(posterior_scales["local"], axis=0).tolist(),
+            "interval_90": np.quantile(posterior_scales["local"], [0.05, 0.95], axis=0).tolist(),
+        },
         "family_scales": scales.tolist(),
         "sampling_attempts": attempts,
-        "parameterization": "noncentred_magnitudes_signs_marginalized_rho_cancelled",
+        "convergence_rule": {
+            "rhat_below": float(rhat_threshold),
+            "ess_above": int(neff_threshold),
+            "divergences": 0,
+            "retry_warmup": int(num_warmup * 2),
+        },
+        "parameterization": "noncentred_magnitudes_signs_marginalized_rho_cancelled" if weight_strategy == "simplex" else "noncentred_positive_global_local_unnormalized",
     }
-    if any(
-        (
-            attempt["divergences"]
-            for attempt in attempts
-            if attempt["divergences"] is not None
-        )
-    ):
-        logger.warning(
-            "NUTS reported divergent transitions; inspect sampling_attempts before using these draws"
-        )
     return (weights, std, diagnostics)

@@ -8,25 +8,51 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 from .figure_io import load_dataset, write_json, sha256, validate_family_priors
+from .weighting import validate_weight_strategy
+
+FINITE_POOL_METHODS = {
+    "SPARC": ("bootstrap", True, 1.96),
+    "SPARC-UCB": ("bootstrap", False, 1.96),
+    "SPARC-greedy": ("bootstrap", True, 0.0),
+    "SPARC-Bayes": ("bayesian", True, 1.96),
+    "GP": ("gp", True, 1.96),
+    "RF": ("rf", True, 1.96),
+}
 
 TASK_KEYS = {
-    "benchmark": {"methods", "family_priors", "adapters"},
+    "benchmark": {"methods", "family_priors", "adapters", "repeat_seeds", "n_jobs"},
     "feature_strategies": {"policy_rounds"},
-    "ablation": {"family_priors", "definitions"},
+    "ablation": {"family_priors", "definitions", "n_jobs"},
     "learning_curve": {"train_sizes", "trees"},
-    "finite_pool": {"task", "initial_ids", "n_evaluations"},
-    "extrapolation": {"task", "maximize"},
-    "campaign": {"candidates", "candidate_id"},
+    "finite_pool": {
+        "task",
+        "initial_id_sets",
+        "n_evaluations",
+        "repeat_seeds",
+        "reference_scale",
+        "methods",
+    },
+    "extrapolation": {"task", "maximize", "repeat_seeds", "reference_scale"},
+    "campaign": {"candidates", "candidate_id", "model", "reference_scale"},
     "verification": {
         "oof_predictions",
         "oof_method",
+        "oof_seed",
         "nonconformity",
+        "n_priority",
         "priority_ids",
+        "additional_control_ids",
         "n_controls",
+        "n_residual_baseline",
+        "reference_scale",
     },
     "repeatability": {"cohort", "repeats"},
     "campaign_outcomes": {"recommendations", "measurements", "threshold"},
 }
+
+
+for _workflow in ("benchmark", "ablation", "finite_pool", "campaign"):
+    TASK_KEYS[_workflow].update({"weight_strategy", "global_scale"})
 
 
 def run(config, base, out):
@@ -37,6 +63,11 @@ def run(config, base, out):
     if set(config) - allowed:
         raise ValueError(f"unknown configuration keys: {sorted(set(config) - allowed)}")
     validate_family_priors(config.get("family_priors"))
+    weight_strategy = config.get("weight_strategy", "simplex")
+    global_scale = config.get("global_scale", 1.0)
+    validate_weight_strategy(weight_strategy, global_scale)
+    if workflow == "campaign" and config.get("model", "bootstrap") != "bayesian" and ({"weight_strategy", "global_scale"} & set(config)):
+        raise ValueError("weight_strategy and global_scale require campaign model=bayesian")
     seed = config["seed"]
     if not isinstance(seed, int) or seed < 0:
         raise ValueError("an explicit nonnegative integer seed is required")
@@ -51,6 +82,7 @@ def run(config, base, out):
         "started_utc": datetime.now(timezone.utc).isoformat(),
         "sparc_version": __version__,
         "configuration": config,
+        "bayesian_composition": {"weight_strategy": weight_strategy, "global_scale": global_scale},
         "versions": {
             p: importlib.metadata.version(p)
             for p in ["numpy", "scipy", "pandas", "scikit-learn", "jax", "numpyro"]
@@ -86,6 +118,8 @@ def run(config, base, out):
                 "nuts_draws": 2000,
                 "soft_gating": False,
                 "feature_policy": False,
+                "hyperparameter_selection": "5-fold grid search within every training state",
+                "repeat_seeds": config.get("repeat_seeds", [seed]),
             }
             write_json(out / "run_parameters.json", state)
             run_benchmark(
@@ -97,6 +131,10 @@ def run(config, base, out):
                 methods=config.get("methods"),
                 family_priors=config.get("family_priors"),
                 adapters=config.get("adapters"),
+                repeat_seeds=config.get("repeat_seeds"),
+                n_jobs=config.get("n_jobs", 1),
+                weight_strategy=weight_strategy,
+                global_scale=global_scale,
             )
         elif workflow == "feature_strategies":
             from .benchmark import run_feature_strategies
@@ -106,6 +144,7 @@ def run(config, base, out):
                 "reward_cv": 5,
                 "delta": 0.1,
                 "policy_rounds": config["policy_rounds"],
+                "reward_per_pull": "R2 on a freshly shuffled five-fold split",
             }
             run_feature_strategies(
                 X, y, out, seed=seed, n_rounds=config["policy_rounds"]
@@ -131,6 +170,9 @@ def run(config, base, out):
                 seed=seed,
                 definitions=config["definitions"],
                 family_priors=config.get("family_priors"),
+                n_jobs=config.get("n_jobs", 1),
+                weight_strategy=weight_strategy,
+                global_scale=global_scale,
             )
         elif workflow == "learning_curve":
             from .learning import representation_bottleneck_analysis
@@ -164,59 +206,94 @@ def run(config, base, out):
                 run_finite_pool_search,
                 discovery_count,
                 bootstrap_model,
+                bayesian_model,
                 gp_reference_model,
                 rf_reference_model,
             )
 
+            factories = {
+                "bootstrap": bootstrap_model,
+                "bayesian": lambda current: bayesian_model(current, weight_strategy, global_scale),
+                "gp": gp_reference_model,
+                "rf": rf_reference_model,
+            }
             tasks = {"ru_dissolution": (20, False), "polymer_her": (10, True)}
             n_initial, maximize = tasks[config["task"]]
-            initial = pd.Index(ids).get_indexer(config["initial_ids"])
-            if (
-                len(initial) != n_initial
-                or (initial < 0).any()
-                or len(set(initial)) != n_initial
-            ):
-                raise ValueError(
-                    f"{config['task']} requires {n_initial} unique known initial IDs"
-                )
+            sets = config["initial_id_sets"]
+            if not isinstance(sets, list) or not sets:
+                raise ValueError("initial_id_sets must be a nonempty list of ID lists")
+            initial_sets = []
+            for members in sets:
+                initial = pd.Index(ids).get_indexer(members)
+                if (
+                    len(initial) != n_initial
+                    or (initial < 0).any()
+                    or len(set(initial)) != n_initial
+                ):
+                    raise ValueError(
+                        f"{config['task']} requires {n_initial} unique known initial IDs per set"
+                    )
+                initial_sets.append(initial)
+            seeds = [int(v) for v in config.get("repeat_seeds", [seed])]
+            methods = config.get("methods", list(FINITE_POOL_METHODS))
+            if set(methods) - set(FINITE_POOL_METHODS) or len(set(methods)) != len(methods):
+                raise ValueError(f"methods must be distinct members of {list(FINITE_POOL_METHODS)}")
+            reference = config.get("reference_scale", "training_mad")
+            optimum = float(np.max(y) if maximize else np.min(y))
             summary = []
-            for name, factory, use_trust in [
-                ("SPARC", bootstrap_model, True),
-                ("GP", gp_reference_model, False),
-                ("RF", rf_reference_model, False),
-            ]:
-                trajectory = run_finite_pool_search(
-                    X,
-                    y,
-                    initial,
-                    maximize,
-                    model_factory=factory,
-                    use_trust=use_trust,
-                    beta=1.96,
-                    reference_scale=1.0,
-                    n_evaluations=config.get("n_evaluations"),
-                    random_state=seed,
-                )
-                trajectory["row_id"] = ids[trajectory.candidate_index]
-                trajectory.to_csv(out / f"trajectory_{name}.csv", index=False)
-                optimum = float(np.max(y) if maximize else np.min(y))
-                summary.append(
-                    {
-                        "method": name,
-                        "discovery_evaluation": discovery_count(
-                            trajectory, optimum, maximize
-                        ),
-                        "pool_optimum": optimum,
-                        "relative_tolerance": 0.001,
-                    }
-                )
-            pd.DataFrame(summary).to_csv(out / "discovery_counts.csv", index=False)
+            for set_no, initial in enumerate(initial_sets):
+                for current in seeds:
+                    for name in methods:
+                        kind, use_trust, beta = FINITE_POOL_METHODS[name]
+                        trajectory = run_finite_pool_search(
+                            X,
+                            y,
+                            initial,
+                            maximize,
+                            model_factory=factories[kind],
+                            use_trust=use_trust,
+                            beta=beta,
+                            reference_scale=reference,
+                            n_evaluations=config.get("n_evaluations"),
+                            random_state=current,
+                        )
+                        trajectory["row_id"] = ids[trajectory.candidate_index]
+                        trajectory.to_csv(
+                            out / f"trajectory_{name}_set{set_no}_seed{current}.csv",
+                            index=False,
+                        )
+                        summary.append(
+                            {
+                                "method": name,
+                                "initial_set": set_no,
+                                "seed": current,
+                                "discovery_evaluation": discovery_count(
+                                    trajectory, optimum, maximize
+                                ),
+                                "pool_optimum": optimum,
+                                "relative_tolerance": 0.001,
+                            }
+                        )
+                        pd.DataFrame(summary).to_csv(out / "discovery_counts.csv", index=False)
+            frame = pd.DataFrame(summary)
+            frame.to_csv(out / "discovery_counts.csv", index=False)
+            frame.groupby("method", sort=False).discovery_evaluation.agg(
+                runs="size",
+                found="count",
+                mean="mean",
+                median="median",
+                q25=lambda v: v.quantile(0.25),
+                q75=lambda v: v.quantile(0.75),
+            ).to_csv(out / "discovery_summary.csv")
             state["protocol"] = {
                 "bootstrap": 150,
-                "beta": 1.96,
-                "q": 1.0,
+                "methods": {name: FINITE_POOL_METHODS[name] for name in methods},
+                "reference_scale": reference,
                 "n_initial": n_initial,
+                "n_initial_sets": len(initial_sets),
+                "repeat_seeds": seeds,
                 "maximize": maximize,
+                "acquisition": "identical trust-modulated confidence bound for every model",
                 "counts_include_initialization": True,
             }
         elif workflow == "extrapolation":
@@ -244,17 +321,48 @@ def run(config, base, out):
                 raise ValueError(
                     "maximize must be boolean and match the specified target"
                 )
-            result = run_controlled_extrapolation(
-                X, y, mask, batch_size, 4, maximize, seed
-            )
-            result.rounds["row_id"] = ids[result.rounds.candidate_index]
-            result.rounds.to_csv(out / "acquisition_rounds.csv", index=False)
-            precision_at_k(result.batches, y[~mask], maximize).to_csv(
-                out / "precision_at_k.csv", index=False
-            )
-            batch_hit_rates(result.batches, y[~mask], maximize).to_csv(
-                out / "batch_hit_rates.csv", index=False
-            )
+            seeds = [int(v) for v in config.get("repeat_seeds", [seed])]
+            reference = config.get("reference_scale", "training_mad")
+            rounds_all, precision_all, hits_all, ratios, weights = ([], [], [], [], {})
+            for current in seeds:
+                result = run_controlled_extrapolation(
+                    X,
+                    y,
+                    mask,
+                    batch_size,
+                    4,
+                    maximize,
+                    current,
+                    reference_scale=reference,
+                )
+                result.rounds["row_id"] = ids[result.rounds.candidate_index]
+                rounds_all.append(result.rounds.assign(seed=current))
+                precision_all.append(
+                    precision_at_k(result.batches, y[~mask], maximize).assign(seed=current)
+                )
+                hits_all.append(
+                    batch_hit_rates(result.batches, y[~mask], maximize).assign(seed=current)
+                )
+                ratios.append({"seed": current, "uncertainty_ratio": result.uncertainty_ratio})
+                weights[str(current)] = result.expert_weights
+            rounds = pd.concat(rounds_all, ignore_index=True)
+            rounds.to_csv(out / "acquisition_rounds.csv", index=False)
+            precision = pd.concat(precision_all, ignore_index=True)
+            precision.to_csv(out / "precision_at_k.csv", index=False)
+            hits = pd.concat(hits_all, ignore_index=True)
+            hits.to_csv(out / "batch_hit_rates.csv", index=False)
+            pd.DataFrame(ratios).to_csv(out / "uncertainty_ratio.csv", index=False)
+            precision.groupby("cutoff_batches").agg(
+                fraction_K=("fraction_K", "first"),
+                precision_mean=("precision_at_K", "mean"),
+                precision_sd=("precision_at_K", "std"),
+                runs=("seed", "nunique"),
+            ).to_csv(out / "precision_at_k_summary.csv")
+            hits.groupby("round").agg(
+                hit_rate_mean=("hit_rate", "mean"),
+                hit_rate_sd=("hit_rate", "std"),
+                runs=("seed", "nunique"),
+            ).to_csv(out / "batch_hit_rates_summary.csv")
             coords = PCA(2, svd_solver="full").fit_transform(
                 StandardScaler().fit_transform(X)
             )
@@ -268,7 +376,8 @@ def run(config, base, out):
                     "round": 0,
                 }
             )
-            for row in result.rounds.itertuples():
+            first = rounds[rounds.seed == seeds[0]]
+            for row in first.itertuples():
                 regions.loc[row.candidate_index, "round"] = row.round
             regions.to_csv(out / "projection_coordinates.csv", index=False)
             regions.groupby("round").target.agg(["count", "mean"]).to_csv(
@@ -278,15 +387,21 @@ def run(config, base, out):
                 "batch_size": batch_size,
                 "rounds": 4,
                 "expert_cv": 3,
-                "q": 1.0,
-                "thompson_joint_draw": "independent standard normal per candidate",
+                "expert_weighting": "pseudo-BMA: softmax of summed three-fold CV log predictive densities",
+                "reference_scale": reference,
+                "thompson_draw": "one joint latent posterior function per round from an expert sampled by its weight",
+                "uncertainty": "latent mixture standard deviation excluding the fitted noise kernel",
+                "uncertainty_ratio_denominator": "held-out cross-fitted uncertainty in the central region",
+                "repeat_seeds": seeds,
                 "initial_indices": np.flatnonzero(mask),
-                "expert_weights": result.expert_weights,
-                "uncertainty_ratio": result.uncertainty_ratio,
+                "expert_weights": weights,
+                "uncertainty_ratio": ratios,
             }
         elif workflow == "campaign":
             from .acquisition import BootstrapEnsemble
+            from .ensemble import SparseEvidenceEnsemble
             from .paper_workflows import rank_campaign_candidates
+            from .uncertainty import trust_summary
 
             candidates = read_table("candidates")
             candidate_ids = candidates[config["candidate_id"]].to_numpy()
@@ -297,15 +412,27 @@ def run(config, base, out):
             if len(y) != 125:
                 raise ValueError("paper campaign starts with 125 labelled observations")
             XC = candidates[config["dataset"]["features"]].to_numpy(dtype=float)
-            model = BootstrapEnsemble(n_bootstrap=150, random_state=seed).fit(X, y)
+            kind = config.get("model", "bootstrap")
+            if kind == "bootstrap":
+                model = BootstrapEnsemble(n_bootstrap=150, random_state=seed).fit(X, y)
+            elif kind == "bayesian":
+                model = SparseEvidenceEnsemble(
+                    random_state=seed, weight_strategy=weight_strategy, global_scale=global_scale
+                ).fit(X, y)
+            else:
+                raise ValueError("model must be bootstrap or bayesian")
+            if kind == "bayesian":
+                write_json(out / "composition_diagnostics.json", model.diagnostics_report())
+            reference = config.get("reference_scale", "training_mad")
             ranking = rank_campaign_candidates(
                 model,
                 XC,
                 n_select=11,
+                y_train=y,
                 maximize=False,
                 beta=1.96,
                 diversity_radius=0.15,
-                reference_scale=1.0,
+                reference_scale=reference,
             )
             ranking.to_frame(candidate_ids).to_csv(
                 out / "candidate_ranking.csv", index=False
@@ -319,14 +446,21 @@ def run(config, base, out):
             pd.DataFrame(
                 {
                     "row_id": ids,
-                    "oob_prediction": model.oob_predictions_,
-                    "oob_count": model.oob_counts_,
+                    "oof_prediction": model.oob_predictions_
+                    if kind == "bootstrap"
+                    else model.oof_predictions_,
                 }
-            ).to_csv(out / "oob_predictions.csv", index=False)
+            ).to_csv(out / "oof_predictions.csv", index=False)
+            greedy = np.argsort(ranking.mean, kind="mergesort")[: len(selection)]
             state["protocol"] = {
-                "bootstrap": 150,
+                "model": kind,
+                "bootstrap": 150 if kind == "bootstrap" else None,
                 "beta": 1.96,
-                "q": 1.0,
+                "reference_scale_rule": reference,
+                "trust": trust_summary(
+                    ranking.trust, ranking.uncertainty, ranking.reference_scale, 1.96
+                ),
+                "overlap_with_greedy_mean_top": int(len(set(selection) & set(greedy))),
                 "diversity_distance": "0.15 * sqrt(d)",
                 "n_select": 11,
                 "diversity_standardization": "complete candidate feature pool",
@@ -340,6 +474,11 @@ def run(config, base, out):
                 raise ValueError("paper verification starts with 125 observations")
             oof = read_table("oof_predictions")
             oof = oof[oof.method == config["oof_method"]].copy()
+            if "seed" in oof:
+                if "oof_seed" in config:
+                    oof = oof[oof.seed == config["oof_seed"]]
+                elif oof.seed.nunique() > 1:
+                    raise ValueError("oof_seed is required when multiple prediction runs are available")
             if not oof.row_id.is_unique or set(oof.row_id) != set(ids):
                 raise ValueError(
                     "OOF IDs must match each initial observation exactly once"
@@ -350,28 +489,54 @@ def run(config, base, out):
             mode = config["nonconformity"]
             if mode not in {"absolute_residual", "residual_over_sd"}:
                 raise ValueError("specify absolute_residual or residual_over_sd")
-            sigma = oof.epistemic_sd.to_numpy() if mode == "residual_over_sd" else None
-            if sigma is not None and (
-                not np.isfinite(sigma).all() or (sigma <= 0).any()
-            ):
+            dispersion = oof.epistemic_sd.to_numpy(dtype=float)
+            if not np.isfinite(dispersion).all() or (dispersion < 0).any():
+                raise ValueError("verification requires finite OOF predictive dispersion")
+            sigma = dispersion if mode == "residual_over_sd" else None
+            if sigma is not None and (sigma <= 0).any():
                 raise ValueError(
                     "normalized nonconformity requires positive OOF standard deviations"
                 )
+            reference = config.get("reference_scale", "training_mad")
             report = quality_report(
-                X, y, oof.y_pred.to_numpy(), sigma, random_state=seed
+                X,
+                y,
+                oof.y_pred.to_numpy(),
+                sigma,
+                trust_uncertainty=dispersion,
+                reference_scale=reference,
+                random_state=seed,
             )
             report["row_id"] = ids[report.idx]
             report.to_csv(out / "verification_flags.csv", index=False)
             cohort = matched_cohort(
-                report, X, ids, config["priority_ids"], config["n_controls"], seed
+                report,
+                X,
+                ids,
+                config["n_controls"],
+                seed,
+                n_priority=config.get("n_priority"),
+                n_residual_baseline=config.get("n_residual_baseline", 0),
+                priority_ids=config.get("priority_ids"),
+                additional_control_ids=config.get("additional_control_ids"),
             )
             cohort.to_csv(out / "fixed_cohort.csv", index=False)
             state["protocol"] = {
+                "oof_method": config["oof_method"],
+                "oof_seed": int(oof.seed.iloc[0]) if "seed" in oof else None,
+                "nonconformity": mode,
                 "conformal_p": 0.1,
+                "conformal_pvalue": "jackknife (1 + #{j != i: s_j >= s_i}) / n on outer OOF residuals",
                 "influence_percentile": 90,
                 "isolation_contamination": 0.1,
                 "mahalanobis_p": 0.05,
                 "priority_min_flags": 2,
+                "priority_rule": "explicit eligible priority_ids when provided; otherwise all or n_priority ranked eligible records",
+                "n_eligible_priority": int((report.n_flags >= 2).sum()),
+                "control_rule": "one unflagged nearest neighbour per priority without replacement; any additional controls require explicit IDs",
+                "influence_rule": "absolute full-fit Ridge prediction minus supplied outer-OOF ensemble prediction",
+                "trust_reported_not_flagged": True,
+                "reference_scale": reference,
                 "repeat_measurements_used": False,
             }
         elif workflow == "repeatability":
