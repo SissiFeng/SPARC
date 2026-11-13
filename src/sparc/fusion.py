@@ -1,5 +1,4 @@
 from __future__ import annotations
-import logging
 import math
 from importlib.util import find_spec
 from typing import Callable, Dict, List, Optional, Tuple
@@ -11,19 +10,19 @@ from sklearn.feature_selection import mutual_info_regression
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import ElasticNet, RidgeCV
 from sklearn.metrics import r2_score
-from sklearn.model_selection import KFold, cross_val_score
+from sklearn.model_selection import KFold
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.validation import check_is_fitted
 from .preprocessing import Preprocessor, feature_matrix
 
-logger = logging.getLogger(__name__)
 __all__ = [
     "STRATEGY_NAMES",
     "K_STRATEGIES",
     "FeatureFusion",
     "UCBBandit",
     "require_strategy_dependencies",
+    "run_strategy_bandit",
     "select_feature_strategy",
 ]
 
@@ -165,11 +164,20 @@ class UCBBandit:
         self.delta = delta
         self._pulls = np.zeros(n_arms, dtype=int)
         self._raw_rewards: List[List[float]] = [[] for _ in range(n_arms)]
+        self._disabled = np.zeros(n_arms, dtype=bool)
         self._t = 0
 
     @property
     def pulls(self) -> np.ndarray:
         return self._pulls.copy()
+
+    @property
+    def disabled(self) -> np.ndarray:
+        return self._disabled.copy()
+
+    def disable(self, arm: int) -> None:
+        self._disabled[arm] = True
+        self._t += 1
 
     def _all_raw(self) -> List[float]:
         return [r for arm in self._raw_rewards for r in arm]
@@ -188,9 +196,7 @@ class UCBBandit:
 
     @property
     def mean_rewards(self) -> np.ndarray:
-        means = np.zeros(self.n_arms, dtype=np.float64)
-        if self._t == 0:
-            return means
+        means = np.full(self.n_arms, np.nan, dtype=np.float64)
         for k, raws in enumerate(self._raw_rewards):
             if not raws:
                 continue
@@ -207,43 +213,32 @@ class UCBBandit:
         return means
 
     def select(self) -> int:
-        unexplored = np.where(self._pulls == 0)[0]
+        available = ~self._disabled
+        if not available.any():
+            raise RuntimeError("every arm has failed")
+        unexplored = np.where((self._pulls == 0) & available)[0]
         if unexplored.size:
             return int(unexplored[0])
         t = self._t + 1
         beta_t = 2.0 * math.log(self.n_arms * t**2 * math.pi**2 / (6.0 * self.delta))
         bonus = np.sqrt(beta_t * math.log(t) / (self._pulls + 1.0))
-        return int(np.argmax(self.mean_rewards + bonus))
+        score = np.where(available, np.nan_to_num(self.mean_rewards, nan=0.0) + bonus, -np.inf)
+        return int(np.argmax(score))
+
+    def best_arm(self) -> int:
+        means = np.where(self._disabled, np.nan, self.mean_rewards)
+        if not np.isfinite(means).any():
+            raise RuntimeError("no arm has a recorded reward")
+        return int(np.nanargmax(means))
 
     def update(self, arm: int, reward: float) -> None:
         if arm < 0 or arm >= self.n_arms:
             raise IndexError(f"arm {arm} out of bounds for {self.n_arms} arms")
         if not np.isfinite(reward):
-            reward = float("-inf")
+            raise ValueError("rewards must be finite; disable failed arms instead")
         self._pulls[arm] += 1
         self._raw_rewards[arm].append(float(reward))
         self._t += 1
-
-
-def _cv_reward(
-    Xw: np.ndarray, y: np.ndarray, cv_splits: int, random_state: int
-) -> float:
-    cv = KFold(
-        n_splits=min(cv_splits, len(y) - 1), shuffle=True, random_state=random_state
-    )
-    linear = cross_val_score(
-        RidgeCV(alphas=[0.1, 1.0, 10.0]), Xw, y, cv=cv, scoring="r2"
-    )
-    tree = cross_val_score(
-        RandomForestRegressor(
-            n_estimators=60, max_depth=6, random_state=random_state, n_jobs=-1
-        ),
-        Xw,
-        y,
-        cv=cv,
-        scoring="r2",
-    )
-    return float((np.mean(linear) + np.mean(tree)) / 2.0)
 
 
 def _strategy_cv_reward(
@@ -280,6 +275,39 @@ def _strategy_cv_reward(
     return float((r2_score(y, linear_oof) + r2_score(y, tree_oof)) / 2.0)
 
 
+def run_strategy_bandit(
+    X: np.ndarray,
+    y: np.ndarray,
+    n_rounds: int,
+    cv_splits: int = 5,
+    delta: float = 0.1,
+    random_state: int = 42,
+    strategies: Optional[List[str]] = None,
+):
+    names = list(STRATEGY_NAMES if strategies is None else strategies)
+    bandit = UCBBandit(len(names), delta=delta)
+    pulls = []
+    failures = {}
+    for pull in range(int(n_rounds)):
+        try:
+            arm = bandit.select()
+        except RuntimeError:
+            break
+        seed = int(random_state) + pull
+        try:
+            score = _strategy_cv_reward(_STRATEGIES[names[arm]], X, y, cv_splits, seed)
+            if not np.isfinite(score):
+                raise ValueError("nonfinite reward")
+        except Exception as exc:
+            failures[names[arm]] = repr(exc)
+            bandit.disable(arm)
+            pulls.append({"pull": pull, "strategy": names[arm], "split_seed": seed, "raw_r2_reward": None})
+            continue
+        bandit.update(arm, score)
+        pulls.append({"pull": pull, "strategy": names[arm], "split_seed": seed, "raw_r2_reward": score})
+    return bandit, pulls, failures
+
+
 def select_feature_strategy(
     X: np.ndarray,
     y: np.ndarray,
@@ -295,29 +323,13 @@ def select_feature_strategy(
     if not np.isfinite(y).all():
         raise ValueError("y must contain only finite values")
     require_strategy_dependencies(STRATEGY_NAMES)
-    bandit = UCBBandit(K_STRATEGIES, delta=delta)
-    rounds = n_rounds if n_rounds is not None else K_STRATEGIES + 2
+    rounds = n_rounds if n_rounds is not None else 3 * K_STRATEGIES
     if rounds < K_STRATEGIES:
         raise ValueError(
             f"n_rounds must be at least {K_STRATEGIES} so every strategy is evaluated"
         )
-    for _ in range(rounds):
-        arm = bandit.select()
-        fn = _STRATEGIES[STRATEGY_NAMES[arm]]
-        try:
-            score = _strategy_cv_reward(fn, X, y, cv_splits, random_state)
-        except Exception as exc:
-            raise RuntimeError(
-                f"feature strategy scoring failed for {STRATEGY_NAMES[arm]}"
-            ) from exc
-        if not np.isfinite(score):
-            raise ValueError(f"nonfinite reward for {STRATEGY_NAMES[arm]}")
-        bandit.update(arm, score)
-    valid = np.isfinite(bandit.raw_mean_rewards)
-    if not valid.any():
-        raise RuntimeError("all feature strategies failed cross-validation")
-    mean = np.where(valid, bandit.mean_rewards, -np.inf)
-    chosen = STRATEGY_NAMES[int(np.argmax(mean))]
+    bandit, _, _ = run_strategy_bandit(X, y, rounds, cv_splits, delta, random_state)
+    chosen = STRATEGY_NAMES[bandit.best_arm()]
     return (chosen, bandit.pulls, bandit.mean_rewards)
 
 
@@ -335,9 +347,6 @@ class FeatureFusion(BaseEstimator, TransformerMixin):
         self.cv_splits = cv_splits
         self.delta = delta
         self.random_state = random_state
-
-    def _reward(self, Xw: np.ndarray, y: np.ndarray) -> float:
-        return _cv_reward(Xw, y, self.cv_splits, self.random_state)
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> "FeatureFusion":
         X = np.asarray(X, dtype=np.float64)

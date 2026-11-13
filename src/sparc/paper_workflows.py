@@ -8,7 +8,7 @@ from .acquisition import (
     trust_weighted_confidence_bound,
     trust_weighted_thompson,
 )
-from .uncertainty import trust_score
+from .uncertainty import resolve_reference_scale, trust_score
 
 __all__ = [
     "CandidateRanking",
@@ -28,6 +28,7 @@ class CandidateRanking:
     acquisition: np.ndarray
     rule: str
     maximize: bool
+    reference_scale: float = 1.0
 
     def top(self, n_select: int) -> np.ndarray:
         if n_select < 1:
@@ -57,14 +58,15 @@ class CandidateRanking:
                 "eligible_for_batch": np.isfinite(rank),
                 "acquisition_rule": self.rule,
                 "maximize": self.maximize,
+                "reference_scale": self.reference_scale,
             }
         )
         return frame.sort_values("acquisition_rank").reset_index(drop=True)
 
 
 def _model_prediction_and_trust(
-    model: object, X_candidates: np.ndarray, reference_scale: float = 1.0
-) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+    model: object, X_candidates: np.ndarray, y_train, reference_scale="training_mad"
+) -> tuple[np.ndarray, np.ndarray, float, np.ndarray, float]:
     if hasattr(model, "predict_with_uncertainty"):
         mean, uncertainty = model.predict_with_uncertainty(X_candidates)
     else:
@@ -78,8 +80,13 @@ def _model_prediction_and_trust(
         )
     mean = np.asarray(mean, dtype=np.float64)
     uncertainty = np.asarray(uncertainty, dtype=np.float64)
-    trust = trust_score(uncertainty, float(residual_scale), reference_scale)
-    return (mean, uncertainty, float(residual_scale), trust)
+    if mean.shape != (len(X_candidates),) or uncertainty.shape != mean.shape:
+        raise ValueError("model predictions must be one-dimensional and aligned with candidates")
+    if not np.isfinite(mean).all():
+        raise ValueError("model predictions must be finite")
+    q = resolve_reference_scale(reference_scale, y_train)
+    trust = trust_score(uncertainty, float(residual_scale), q)
+    return (mean, uncertainty, float(residual_scale), trust, q)
 
 
 def _ordered_indices(
@@ -105,11 +112,12 @@ def _confidence_bound_ranking(
     beta: float,
     diversity_radius: Optional[float],
     rule: str,
-    reference_scale: float = 1.0,
+    y_train,
+    reference_scale="training_mad",
 ) -> CandidateRanking:
     X_candidates = np.asarray(X_candidates, dtype=np.float64)
-    mean, uncertainty, residual_scale, trust = _model_prediction_and_trust(
-        model, X_candidates, reference_scale
+    mean, uncertainty, residual_scale, trust, q = _model_prediction_and_trust(
+        model, X_candidates, y_train, reference_scale
     )
     acquisition = trust_weighted_confidence_bound(
         mean, uncertainty, trust, beta=beta, maximize=maximize
@@ -123,6 +131,7 @@ def _confidence_bound_ranking(
         acquisition=acquisition,
         rule=rule,
         maximize=maximize,
+        reference_scale=q,
     )
 
 
@@ -130,8 +139,9 @@ def rank_fig3_candidates(
     bootstrap_model: object,
     X_candidates: np.ndarray,
     maximize: bool,
+    y_train,
     beta: float = 1.96,
-    reference_scale: float = 1.0,
+    reference_scale="training_mad",
 ) -> CandidateRanking:
     return _confidence_bound_ranking(
         bootstrap_model,
@@ -140,6 +150,7 @@ def rank_fig3_candidates(
         beta=beta,
         diversity_radius=None,
         rule="fig3_trust_weighted_confidence_bound",
+        y_train=y_train,
         reference_scale=reference_scale,
     )
 
@@ -149,19 +160,19 @@ def rank_fig4_batch(
     X_candidates: np.ndarray,
     n_select: int,
     maximize: bool,
+    y_train,
     random_state: Optional[int] = None,
     diversity_radius: Optional[float] = None,
-    reference_scale: float = 1.0,
+    reference_scale="training_mad",
 ) -> CandidateRanking:
     if n_select < 1:
         raise ValueError("n_select must be positive")
     X_candidates = np.asarray(X_candidates, dtype=np.float64)
-    mean, uncertainty, residual_scale, trust = _model_prediction_and_trust(
-        gp_expert_model, X_candidates, reference_scale
+    mean, uncertainty, residual_scale, trust, q = _model_prediction_and_trust(
+        gp_expert_model, X_candidates, y_train, reference_scale
     )
-    acquisition = trust_weighted_thompson(
-        mean, uncertainty, trust, maximize=maximize, random_state=random_state
-    )
+    draw = gp_expert_model.sample_joint(X_candidates, random_state=random_state)
+    acquisition = trust_weighted_thompson(mean, trust, draw, maximize=maximize)
     ranking = CandidateRanking(
         indices=_ordered_indices(X_candidates, acquisition, diversity_radius),
         mean=mean,
@@ -169,8 +180,9 @@ def rank_fig4_batch(
         residual_scale=residual_scale,
         trust=trust,
         acquisition=acquisition,
-        rule="fig4_trust_modulated_thompson",
+        rule="fig4_trust_modulated_joint_thompson",
         maximize=maximize,
+        reference_scale=q,
     )
     if n_select > len(ranking.indices):
         raise ValueError("n_select cannot exceed the number of candidates")
@@ -181,10 +193,11 @@ def rank_campaign_candidates(
     bootstrap_model: object,
     X_candidates: np.ndarray,
     n_select: int,
+    y_train,
     maximize: bool = False,
     beta: float = 1.96,
     diversity_radius: Optional[float] = 0.15,
-    reference_scale: float = 1.0,
+    reference_scale="training_mad",
 ) -> CandidateRanking:
     if n_select < 1:
         raise ValueError("n_select must be positive")
@@ -195,6 +208,7 @@ def rank_campaign_candidates(
         beta=beta,
         diversity_radius=diversity_radius,
         rule="campaign_trust_weighted_confidence_bound",
+        y_train=y_train,
         reference_scale=reference_scale,
     )
     if n_select > len(ranking.indices):

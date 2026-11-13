@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sparc import SparseEvidenceEnsemble, trust_score
+from sparc.uncertainty import response_scale
 
 
 def main(argv=None):
@@ -35,7 +36,7 @@ def main(argv=None):
             "prediction": mean,
             "epistemic_sd": epistemic_sd,
             "residual_scale": model.aleatoric_,
-            "trust": trust_score(epistemic_sd, model.aleatoric_),
+            "trust": trust_score(epistemic_sd, model.aleatoric_, response_scale(train[args.target].to_numpy(dtype=float))),
         }
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

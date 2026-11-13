@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from .acquisition import trust_weighted_thompson
 from .ood import GPExpertMixture, uncertainty_inflation_ratio
-from .uncertainty import trust_score
+from .uncertainty import resolve_reference_scale, trust_score
 
 __all__ = [
     "central_interval_split",
@@ -52,7 +52,7 @@ def run_controlled_extrapolation(
     n_rounds: int = 4,
     maximize: bool = True,
     random_state: int = 0,
-    reference_scale: float = 1.0,
+    reference_scale="training_mad",
     model_factory: Optional[Callable[[int], object]] = None,
 ) -> ExtrapolationRun:
     X = np.asarray(X, dtype=np.float64)
@@ -87,19 +87,19 @@ def run_controlled_extrapolation(
         model.fit(X[labelled], y[labelled])
         mean, uncertainty = model.predict_with_uncertainty(X[pool[remaining]])
         residual_scale = float(getattr(model, "residual_scale_"))
-        trust = trust_score(uncertainty, residual_scale, reference_scale)
+        q = resolve_reference_scale(reference_scale, y[labelled])
+        trust = trust_score(uncertainty, residual_scale, q)
         if round_no == 0:
-            _, sd_initial = model.predict_with_uncertainty(X[labelled])
+            sd_initial = getattr(model, "oof_uncertainty_", None)
+            if sd_initial is None:
+                raise ValueError("model must expose held-out oof_uncertainty_ for the central region")
             uncertainty_ratio = uncertainty_inflation_ratio(uncertainty, sd_initial)
         if hasattr(model, "expert_weights_"):
             weights_by_round.append(np.asarray(model.expert_weights_).copy())
-        score = trust_weighted_thompson(
-            mean,
-            uncertainty,
-            trust,
-            maximize=maximize,
-            random_state=int(random_state) + round_no,
+        draw = model.sample_joint(
+            X[pool[remaining]], random_state=int(random_state) + round_no
         )
+        score = trust_weighted_thompson(mean, trust, draw, maximize=maximize)
         order = np.argsort(score, kind="mergesort")[::-1][: int(batch_size)]
         batch = remaining[order]
         batches.append(batch.copy())
@@ -113,6 +113,8 @@ def run_controlled_extrapolation(
                     "predicted_mean": float(mean[local]),
                     "uncertainty": float(uncertainty[local]),
                     "residual_scale": residual_scale,
+                    "reference_scale": float(q),
+                    "joint_draw": float(draw[local]),
                     "trust": float(trust[local]),
                     "acquisition_score": float(score[local]),
                 }

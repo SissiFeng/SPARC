@@ -1,0 +1,24 @@
+{
+  "workflow": "benchmark",
+  "seed": 42,
+  "dataset": {
+    "data": "demo.csv",
+    "target": "response",
+    "target_unit": "arbitrary_unit",
+    "features": [
+      "x1",
+      "x2"
+    ],
+    "row_id": "sample_id",
+    "excluded_outcomes": []
+  },
+  "methods": [
+    "SPARC"
+  ],
+  "repeat_seeds": [
+    42
+  ],
+  "n_jobs": 1,
+  "weight_strategy": "global_local",
+  "global_scale": 1.0
+}

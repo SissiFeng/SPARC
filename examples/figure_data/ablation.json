@@ -16,7 +16,7 @@
   "definitions": {
     "sparse_removal": "fixed_local_scales",
     "nonnegative_removal": "signed_affine",
-    "nonnested": "fit_and_score_same_oof",
+    "nonnested": "kfold_composition_fitted_on_all_rows",
     "nonnested_folds": 5
   }
 }

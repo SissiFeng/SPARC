@@ -44,19 +44,28 @@ class LLMComparison(RegressorMixin, BaseEstimator):
             "prompts",
             "decoding",
         }
-        if set(config) - (required | {"family_priors"}) or required - set(config):
+        optional = {"family_priors", "adaptive_rounds", "feedback_folds", "weight_strategy", "global_scale"}
+        if set(config) - (required | optional) or required - set(config):
             raise ValueError(
-                f"LLM configuration requires {sorted(required)}; family_priors is optional"
+                f"LLM configuration requires {sorted(required)}; optional keys are {sorted(optional)}"
             )
         mode = config["mode"]
+        if mode == "standalone" and {"weight_strategy", "global_scale"} & set(config):
+            raise ValueError("composition strategies require LLM mode=hybrid")
         if mode not in {"standalone", "hybrid"}:
             raise ValueError("LLM mode must be standalone or hybrid")
+        rounds = config.get("adaptive_rounds")
+        if mode == "standalone" and (not isinstance(rounds, int) or rounds < 1):
+            raise ValueError("standalone mode requires adaptive_rounds >= 1")
+        folds = config.get("feedback_folds", 5)
+        if mode == "standalone" and (not isinstance(folds, int) or folds < 2):
+            raise ValueError("feedback_folds must be an integer of at least 2")
         if (
             not isinstance(config["model_snapshot"], str)
             or not config["model_snapshot"]
         ):
             raise ValueError("model_snapshot is required")
-        operations = {"select", "predict"} if mode == "standalone" else {"select"}
+        operations = {"select", "revise", "predict"} if mode == "standalone" else {"select"}
         if (
             not isinstance(config["prompts"], dict)
             or set(config["prompts"]) != operations
@@ -112,6 +121,8 @@ class LLMComparison(RegressorMixin, BaseEstimator):
             self.model_ = SparseEvidenceEnsemble(
                 random_state=self.random_state,
                 family_priors=config.get("family_priors"),
+                weight_strategy=config.get("weight_strategy", "simplex"),
+                global_scale=config.get("global_scale", 1.0),
                 feature_strategy=selection["feature_strategy"],
                 model_names=selection["model_names"],
             ).fit(X, y)
@@ -124,17 +135,19 @@ class LLMComparison(RegressorMixin, BaseEstimator):
                     "feature_indices": "nonempty unique integer array indexing feature_names"
                 },
             )
-            indices = selection.get("feature_indices")
-            if (
-                set(selection) != {"feature_indices"}
-                or not isinstance(indices, list)
-                or (not indices)
-                or any((type(i) is not int or not 0 <= i < X.shape[1] for i in indices))
-                or (len(set(indices)) != len(indices))
-            ):
-                raise ValueError(
-                    "standalone selection must return valid feature_indices"
+            indices = self._indices(selection, X.shape[1])
+            self.adaptation_history_ = []
+            for round_no in range(int(rounds)):
+                feedback = self._feedback(X, y, names, indices, folds, round_no)
+                self.adaptation_history_.append(feedback)
+                selection = self._call(
+                    "revise",
+                    {**inputs, "current_feature_indices": indices, "feedback": feedback},
+                    {
+                        "feature_indices": "nonempty unique integer array indexing feature_names"
+                    },
                 )
+                indices = self._indices(selection, X.shape[1])
             self.selected_indices_ = indices
             self.training_X_ = X[:, indices].copy()
             self.training_y_ = y.copy()
@@ -144,6 +157,64 @@ class LLMComparison(RegressorMixin, BaseEstimator):
         self.n_features_in_ = X.shape[1]
         return self
 
+    @staticmethod
+    def _indices(selection, n_features):
+        indices = selection.get("feature_indices")
+        if (
+            set(selection) != {"feature_indices"}
+            or not isinstance(indices, list)
+            or (not indices)
+            or any((type(i) is not int or not 0 <= i < n_features for i in indices))
+            or (len(set(indices)) != len(indices))
+        ):
+            raise ValueError("standalone selection must return valid feature_indices")
+        return list(indices)
+
+    def _in_context(self, names, X_train, y_train, X_predict):
+        response = self._call(
+            "predict",
+            {
+                "feature_names": names,
+                "X_train": X_train.tolist(),
+                "y_train": y_train.tolist(),
+                "X_predict": X_predict.tolist(),
+            },
+            {"predictions": "one finite numeric prediction per X_predict row"},
+        )
+        prediction = np.asarray(response.get("predictions"), dtype=float)
+        if (
+            set(response) != {"predictions"}
+            or prediction.shape != (len(X_predict),)
+            or (not np.isfinite(prediction).all())
+        ):
+            raise ValueError(
+                "LLM predictions must be finite and aligned with prediction rows"
+            )
+        return prediction
+
+    def _feedback(self, X, y, names, indices, folds, round_no):
+        from sklearn.metrics import r2_score
+        from sklearn.model_selection import KFold
+
+        selected = [names[i] for i in indices]
+        oof = np.empty(len(y))
+        splitter = KFold(
+            n_splits=min(int(folds), len(y)),
+            shuffle=True,
+            random_state=int(self.random_state) + round_no,
+        )
+        for train, test in splitter.split(X):
+            oof[test] = self._in_context(
+                selected, X[train][:, indices], y[train], X[test][:, indices]
+            )
+        return {
+            "round": round_no,
+            "feature_indices": list(indices),
+            "cv_r2": float(r2_score(y, oof)),
+            "cv_mae": float(np.mean(np.abs(y - oof))),
+            "residuals": (y - oof).tolist(),
+        }
+
     def predict(self, X):
         check_is_fitted(self, "n_features_in_")
         X = feature_matrix(X)
@@ -151,26 +222,12 @@ class LLMComparison(RegressorMixin, BaseEstimator):
             raise ValueError("prediction feature shape differs from training")
         if self.configuration["mode"] == "hybrid":
             return self.model_.predict(X)
-        response = self._call(
-            "predict",
-            {
-                "feature_names": self.selected_names_,
-                "X_train": self.training_X_.tolist(),
-                "y_train": self.training_y_.tolist(),
-                "X_predict": X[:, self.selected_indices_].tolist(),
-            },
-            {"predictions": "one finite numeric prediction per X_predict row"},
+        return self._in_context(
+            self.selected_names_,
+            self.training_X_,
+            self.training_y_,
+            X[:, self.selected_indices_],
         )
-        prediction = np.asarray(response.get("predictions"), dtype=float)
-        if (
-            set(response) != {"predictions"}
-            or prediction.shape != (len(X),)
-            or (not np.isfinite(prediction).all())
-        ):
-            raise ValueError(
-                "LLM predictions must be finite and aligned with prediction rows"
-            )
-        return prediction
 
 
 def make_comparison(random_state, configuration):

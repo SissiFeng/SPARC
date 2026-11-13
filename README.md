@@ -1,131 +1,97 @@
 # SPARC
 
-Sparse Predictive Aggregation of Regression Components.
+Sparse Predictive Aggregation of Regression Components. Version 2.5.3rc5.
 
 ## Install
 
-Use Python 3.12.
+Use Python 3.12 in an isolated environment.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install .
+python -m pip install -r requirements.txt
+python -m pip install .
 ```
 
-Install `pip install '.[shap]'` for the eight feature strategies.
+Install `'.[shap]'` for all eight feature strategies and `'.[excel]'` for Excel input to the ablation runner. The import name and distribution name are both `sparc`.
 
 ## Train and predict
 
 ```python
 from sparc import SparseEvidenceEnsemble, trust_score
+from sparc.uncertainty import response_scale
 
-model = SparseEvidenceEnsemble(random_state=42)
+model = SparseEvidenceEnsemble(random_state=42, weight_strategy="simplex")
 model.fit(X_train, y_train)
-mean, epistemic_sd = model.predict_with_uncertainty(X_new)
-trust = trust_score(epistemic_sd, model.aleatoric_, reference_scale=1.0)
+mean, epistemic_sd = model.predict_with_uncertainty(X_candidates)
+trust = trust_score(epistemic_sd, model.residual_scale_, response_scale(y_train))
 ```
 
-The model uses internal leave-one-out evidence, the twelve-model library,
-50 subsamples containing 80% of training rows, a 60% selection threshold,
-and Bayesian simplex composition. Screening is skipped below 20 training
-observations; if no model passes, the five highest frequencies are retained.
-NUTS uses four chains, 1,000 warmup iterations and 2,000 draws per chain;
-failed weight convergence triggers one retry with 2,000 warmup iterations.
-Every retained model is refitted, regardless of its posterior-mean weight.
+The manuscript model uses nonnegative simplex weights. The default `simplex` strategy normalizes coefficient magnitudes to sum to one. Its shared global multiplier cancels under normalization. The supplied optional `global_local` strategy uses unnormalized positive coefficients and changes the predictive model; it is not the manuscript default or a substitute for reproducing its results.
 
-The primary benchmark has no feature policy or training-time observation
-weighting. Automatic feature-strategy selection is enabled separately with
-`feature_strategy="auto"`. Family scales default to one and can be supplied
-using `family_priors` with keys `linear`, `tree_based`, `locally_smooth` and
-`monotonic`. All specified values must be positive.
+The twelve-model library is tuned by training-only five-fold grid search, except Bayesian ridge and the GP, which estimate their own parameters. Internal leave-one-out evidence supports stability screening and posterior composition. Screening uses 50 subsamples of 80% of training rows and a 60% selection threshold. It is skipped below 20 rows; if no hypothesis passes, the five highest selection frequencies are retained. Hyperparameters, active models and posterior diagnostics are saved with each fitted training state.
 
-Imputation, encoding, zero-variance filtering and standardization are fitted
-inside each training fold. Input features must be available before the
-response is measured. Input scaling does not standardize the response.
-Trust's reference scale uses the same units as the response.
+NUTS uses four chains, 1,000 warmup iterations and 2,000 retained draws per chain. Acceptance requires weight and noise R-hat below 1.01, ESS above 400 and no divergences. Failed sampling is retried once with 2,000 warmup iterations and otherwise raises an error. The optional global-local strategy also checks its sampled global and local scales. Posterior weight draws propagate composition uncertainty. Truncated importance-LOO residuals are conditional on the evidence matrix; complete outer-held-out evaluation refits the predictive pipeline.
+
+Automatic feature-strategy selection is enabled separately with `feature_strategy="auto"`. Family priors default to one and accept positive scales for `linear`, `tree_based`, `locally_smooth` and `monotonic`. Preprocessing is refitted within each training partition. Features must exclude measured responses, IDs and unavailable future information. The training-MAD trust reference scale has the response's units.
 
 ```bash
-python examples/train_predict.py \
-  --train train.csv --candidates candidates.csv --target response \
-  --feature temperature --feature precursor \
+python examples/train_predict.py --train train.csv --candidates candidates.csv \
+  --target response --feature temperature --feature precursor \
   --output predictions.csv --model-output model.joblib
 ```
 
-`joblib.load("model.joblib")` loads the fitted estimator and feature order.
+## Run ablations by editing one Python file
 
-## Generate numerical figure data
+Edit the input path, feature list, target, units and IDs at the top of `examples/run_sparc_ablation.py`, then run:
 
 ```bash
-sparc-figure-data examples/figure_data/benchmark.json --out results/benchmark
+python examples/run_sparc_ablation.py
 ```
 
-Each example JSON specifies a workflow. Replace its input paths, column names,
-units and sample IDs with the dataset fields. Paths are relative to the JSON.
-Use unique sample IDs and finite targets. Specify other response columns in
-`excluded_outcomes`. Outputs are CSV tables and JSON run parameters. The output
-directory must be empty. The package contains no plotting functions.
+This entry point calls the ablation implementation directly. It writes `predictions.csv`, `ablation_metrics.csv` and run parameters. Each dataset requires a new output directory. The runner checks sample alignment and records the chosen features, input and code hashes, seed and environment.
 
-| Configuration | Calculation |
+The component variants fix local scales, allow signed affine weights, remove family preferences, remove screening, or select the best single hypothesis from training evidence. Uniform family scales do not define a distinct prior-removal experiment and are marked not applicable in the runner's metric table. Relative changes use `100*(R2_variant-R2_full)/R2_full` from the same run, preserving signs. The percentage is undefined at a zero reference score and reverses the usual improvement interpretation for a negative reference score.
+
+`Non-nested k-fold` intentionally fits composition on all responses using k-fold evidence, then applies that composition to the same outer-held-out base-model predictions as the other variants. Its `evaluation` field distinguishes this diagnostic from fully nested prediction. It cannot be interpreted as an independent test estimate of the complete composition procedure.
+
+## Numerical workflows
+
+The package contains numerical-data generation functions and no plotting functions. `sparc.figure_data` also provides a configurable entry point:
+
+```bash
+python -m sparc.figure_data examples/benchmark.json --out results/demo
+```
+
+The supplied 16-row synthetic Ridge example demonstrates execution only. It is not a manuscript dataset or result. Configurations in `examples/figure_data/` are templates: replace paths, columns, units and IDs with actual inputs. Paths are relative to the configuration file; output directories must be empty.
+
+| Workflow | Calculation |
 | --- | --- |
-| `benchmark` | Matched outer LOO, inner LOO for SPARC, assembled predictions and pooled R²/MAE/RMSE. |
-| `feature_strategies` | Five-fold RidgeCV/RF rewards for all eight strategies within each outer training set; UCB with δ=0.1; raw R², normalized rewards and selection counts. |
-| `ablation` | Paired nested-LOO component comparisons and a separately exported non-nested k-fold alternative. |
-| `learning_curve` | ET/RF/GBR mean, 20 random 80:20 splits, nested subsets, saturation fitting and 2,000 bootstrap resamples with 90% intervals. |
-| `finite_pool` | Six learner configurations over 150 bootstrap resamples; trust-modulated acquisition and GP/RF comparisons with identical initialization. |
-| `extrapolation` | Central 20–80% split, three GP experts, three-fold likelihood weights and four acquisition batches. |
-| `campaign` | 125 initial observations, 150 bootstraps and 11 recommendations separated by at least `0.15*sqrt(d)` in standardized feature space. |
-| `verification` | Four diagnostics from initial measurements and OOF predictions, followed by feature-matched controls. |
-| `repeatability` | Fixed cohort IDs joined to subsequent measurements; individual differences, group means and medians. |
-| `campaign_outcomes` | Fixed recommendation IDs joined to subsequent measurements; observed threshold count and minimum. |
+| `benchmark` | Outer LOO predictions, pooled metrics per seed, repeated-seed summaries and fold records. |
+| `feature_strategies` | Fresh five-fold scoring per policy pull, counts, rewards and explicit failure records. |
+| `ablation` | Nested component comparisons and the labelled non-nested diagnostic. |
+| `learning_curve` | Repeated learning curves, saturation fits and bootstrap intervals. |
+| `finite_pool` | Sequential acquisition with shared, explicitly supplied initial IDs. |
+| `extrapolation` | Three GP experts and batches from a joint latent Thompson draw. |
+| `campaign` | Candidate ranking and a fixed recommendation list before measurements. |
+| `verification` | Diagnostic flags, specified priority records and feature-matched controls. |
+| `repeatability` | Fixed cohort IDs joined to subsequent repeat measurements. |
+| `campaign_outcomes` | Fixed recommendation IDs joined to measured outcomes. |
 
-The ablation configuration specifies fixed local scales for sparse-prior
-removal, signed coefficients normalized by their signed sum for removal of
-non-negativity, unit family scales, removal of stability screening, and best
-single-model selection using training-only OOF error. Each nested variant has
-the same outer observations. With uniform family scales, their removal leaves
-the model unchanged. Relative change is `100*(R²_variant-R²_full)/R²_full`.
-The non-nested alternative fits and scores composition on the same base-model
-OOF matrix; its output is separate from the outer-held-out metrics.
+Finite-pool search requires 20 initial IDs for `ru_dissolution` or 10 for `polymer_her`; counts include initialization. Candidate responses enter training only after selection. Controlled extrapolation uses latent GP uncertainty, summed cross-validated log predictive densities for expert weights, and one joint latent function draw per batch. Each batch is fixed before its labels are revealed.
 
-Finite-pool initialization requires 20 supplied IDs for `ru_dissolution` or
-10 for `polymer_her`. Counts include initialization; discovery means reaching
-within 0.1% of the pool optimum. Supply the fixed candidate feature pool.
-Each response enters training only after that candidate is selected.
+Verification retains the manuscript's Ridge-proxy influence definition: the absolute difference between a full-fit Ridge prediction and the supplied outer-OOF ensemble prediction. Priority records require at least two flags; controls have none. Supply `priority_ids` to reproduce a fixed subset. Matching selects one distinct nearest control per priority record. Any extra controls require explicit `additional_control_ids`; the program does not invent an experimental assignment. A residual-only comparator is optional and disabled by default. Select `oof_seed` explicitly when prediction files contain multiple seeds. Save the cohort before joining repeat measurements.
 
-Extrapolation requires 214/92 central/pool observations for formate oxidation
-or 406/56 for OER activity. Batch sizes are 23 and 14. The Thompson score is
-`s*mean + sd*trust*z`, with an independent standard-normal draw per candidate.
-Each complete batch is selected before any of its responses enter training.
+## LLM interface
 
-Verification takes `benchmark/predictions.csv` and explicit priority IDs.
-Choose `absolute_residual` or `residual_over_sd` as the nonconformity measure.
-The latter requires positive OOF standard deviations. Priority observations
-must have at least two flags; controls must have none. Save the cohort before
-passing repeat measurements to `repeatability`. Repeat input columns are
-`row_id,repeated`; recommendation measurements use `row_id,measured`.
+`sparc.llm:make_comparison` accepts an external provider returning parsed JSON. Configuration requires `mode`, `provider`, `model_snapshot`, `feature_names`, `prompts` and `decoding`. Standalone mode returns selected features and numerical predictions. Hybrid mode returns a feature strategy and model hypotheses for SPARC to fit on the training partition. Requests, responses and selected configurations are saved with each fold. The interface supplies no assumed historical snapshots or prompts.
 
-## Representation and LLM interfaces
+## Validation and reuse
 
-An external estimator can enter the same outer LOO benchmark through an
-adapter factory taking `random_state` and `configuration`, and returning an
-estimator with `fit(X_train, y_train)` and `predict(X_test)`. Any trainable
-representation is fitted inside its `fit` method. Frozen descriptor columns
-may be supplied directly when their construction is independent of task labels.
+```bash
+python -m unittest discover -s tests -v
+```
 
-For LLM comparisons use the adapter implementation `sparc.llm:make_comparison`.
-Its configuration requires `mode` (`standalone` or `hybrid`), `provider`
-(an importable `module:function`), `model_snapshot`, `feature_names`, `prompts`
-and `decoding`. These values are explicit inputs; there are no default model
-snapshots, prompts or decoding settings. `family_priors` is optional.
+Tests check numerical invariants, held-out evidence, acquisition behavior, solver contracts and workflow outputs. Mocked solver tests do not replace real posterior sampling or dataset-level reproduction. Historical paper inputs and figure results are not included in this source package.
 
-The provider accepts one request dictionary and returns a parsed JSON object.
-Requests contain the model identifier, complete prompt, decoding settings,
-output schema and inputs. `prompts` contains `select` and, for standalone mode,
-`predict`. Standalone selection returns `feature_indices`, then prediction
-returns `predictions`. It does not invoke SPARC's decision modules. Hybrid
-selection receives all eight feature strategies and twelve model hypotheses
-and returns `feature_strategy` and `model_names`. SPARC then fits those choices
-using the same preprocessing, evidence, screening and posterior procedures.
-Selection receives only the outer training observations. Requests, responses
-and choices are saved with each benchmark fold.
+Repository: https://github.com/SissiFeng/SPARC. Licensed under Apache-2.0; see `LICENSE`. Author: Sissi Feng.

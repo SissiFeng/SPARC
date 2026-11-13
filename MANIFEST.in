@@ -3,3 +3,5 @@ include README.md
 include requirements.txt
 recursive-include examples *.py
 recursive-include examples *.json
+recursive-include examples *.csv
+recursive-include tests *.py

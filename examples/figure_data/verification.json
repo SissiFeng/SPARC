@@ -16,5 +16,7 @@
   "oof_method": "SPARC",
   "nonconformity": "absolute_residual",
   "priority_ids": [],
+  "additional_control_ids": [],
+  "n_residual_baseline": 0,
   "n_controls": 8
 }
