@@ -1,0 +1,20 @@
+{
+  "workflow": "verification",
+  "seed": 42,
+  "dataset": {
+    "data": "inputs.csv",
+    "row_id": "sample_id",
+    "target": "response",
+    "target_unit": "response_unit",
+    "features": [
+      "x1",
+      "x2"
+    ],
+    "excluded_outcomes": []
+  },
+  "oof_predictions": "benchmark/predictions.csv",
+  "oof_method": "SPARC",
+  "nonconformity": "absolute_residual",
+  "priority_ids": [],
+  "n_controls": 8
+}

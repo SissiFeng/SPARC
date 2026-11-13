@@ -1,0 +1,6 @@
+{
+  "workflow": "repeatability",
+  "seed": 42,
+  "cohort": "verification/fixed_cohort.csv",
+  "repeats": "repeats.csv"
+}

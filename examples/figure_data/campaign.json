@@ -1,0 +1,17 @@
+{
+  "workflow": "campaign",
+  "seed": 42,
+  "dataset": {
+    "data": "inputs.csv",
+    "row_id": "sample_id",
+    "target": "response",
+    "target_unit": "response_unit",
+    "features": [
+      "x1",
+      "x2"
+    ],
+    "excluded_outcomes": []
+  },
+  "candidates": "candidates.csv",
+  "candidate_id": "candidate_id"
+}

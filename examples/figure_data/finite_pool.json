@@ -1,0 +1,28 @@
+{
+  "workflow": "finite_pool",
+  "seed": 42,
+  "dataset": {
+    "data": "inputs.csv",
+    "row_id": "sample_id",
+    "target": "response",
+    "target_unit": "response_unit",
+    "features": [
+      "x1",
+      "x2"
+    ],
+    "excluded_outcomes": []
+  },
+  "task": "polymer_her",
+  "initial_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ]
+}

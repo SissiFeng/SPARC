@@ -1,0 +1,23 @@
+{
+  "workflow": "learning_curve",
+  "seed": 42,
+  "dataset": {
+    "data": "inputs.csv",
+    "row_id": "sample_id",
+    "target": "response",
+    "target_unit": "response_unit",
+    "features": [
+      "x1",
+      "x2"
+    ],
+    "excluded_outcomes": []
+  },
+  "train_sizes": [
+    10,
+    20,
+    30,
+    40,
+    50
+  ],
+  "trees": 60
+}

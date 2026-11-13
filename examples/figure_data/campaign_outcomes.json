@@ -1,0 +1,7 @@
+{
+  "workflow": "campaign_outcomes",
+  "seed": 42,
+  "recommendations": "campaign/recommendations.csv",
+  "measurements": "measurements.csv",
+  "threshold": 300
+}
