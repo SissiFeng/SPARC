@@ -9,7 +9,7 @@ description = "Sparse Predictive Aggregation of Regression Components"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 authors = [{name = "Acceleration Consortium, University of Toronto"}]
 dependencies = [
     "numpy==1.26.4",

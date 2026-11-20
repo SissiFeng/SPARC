@@ -9,7 +9,7 @@
 
 [![SPARC explained: an interactive walkthrough](docs/hero.png)](https://sissifeng.github.io/SPARC/)
 
-In a self-driving laboratory, the model that picks the next experiment is usually chosen before the first one is run. SPARC keeps that choice open. Every new measurement can change which models influence the next decision, and which existing measurements deserve a second look.
+In materials discovery, the model that picks the next experiment is usually chosen before the first one is run. SPARC keeps that choice open. Every new measurement can change which models influence the next decision, and which existing measurements deserve a second look.
 
 **[Interactive explainer](https://sissifeng.github.io/SPARC/)** · **[Paper](https://arxiv.org/abs/2611.19050)** · **[Archived release](https://doi.org/10.5281/zenodo.24201692)**
 
@@ -36,7 +36,7 @@ flowchart LR
 
 | Move | What happens |
 | --- | --- |
-| 1. Compete | Additive, tree-based, locally smooth and monotonic models are fitted to the same sparse record. |
+| 1. Compete | Linear, tree-based, locally smooth and monotonic models are fitted to the same sparse record. |
 | 2. Withhold | Each record is predicted by every model refitted without it, giving the evidence matrix `P[i, m]`. |
 | 3. Screen | A non-negative lasso on the evidence is repeated over 50 subsamples of 80% of the records. Models selected in at least 60% of them enter the active set. |
 | 4. Compose | Weights `w = abs(a) / sum(abs(a))` receive a posterior under hierarchical half-Cauchy scale priors, sampled with NUTS. |
@@ -47,20 +47,20 @@ The [interactive explainer](https://sissifeng.github.io/SPARC/) runs these six m
 
 ## Results at a glance
 
-Numbers are from the [paper](https://arxiv.org/abs/2611.19050). The qualifiers are part of each result.
+Numbers are from the [paper](https://arxiv.org/abs/2611.19050).
 
-| Test | Result | Read it with this in mind |
+| Test | Result | Sample |
 | --- | --- | --- |
-| Prospective alkaline OER campaign | 8 of 11 recommended conditions below 300 mV at 10 mA cm⁻² (best 242 mV); 18 of 125 in the initial record | Recommendations were fixed before measurement. There was no parallel baseline arm. |
-| Prospective measurement verification | All three original–repeat deviations above 130 mV were among the 7 records flagged before repetition; all 8 matched controls stayed below 42 mV | Means 76 vs 27 mV; medians 36.3 vs 32.5 mV. Descriptive, small groups. |
-| Eight published datasets | R² above the value reported by the source study on 6 of 8 | Source studies used their own splits; reported values are context, not matched-split baselines. |
-| Pretrained representations | Lowered R² in all six cases tested (by 11–37%) | Two datasets of 160 and 99 records. |
-| Finite-pool search | Near-optimum after 66 vs 113 (GP) and 126 (RF) evaluations for Ru dissolution; 16 vs 39 and 76 for polymer HER | One initialization per task: case studies. |
-| Controlled extrapolation | First batch contained 35% and 43% true top-quartile candidates (25% expected at random) | Extends the ranges of the same experimental variables. |
+| Prospective alkaline OER campaign | 8 of 11 recommended conditions below 300 mV at 10 mA cm⁻² (best 242 mV); 18 of 125 in the initial record | 11 recommendations, fixed before measurement; 125 initial experiments |
+| Prospective measurement verification | All three original–repeat deviations above 130 mV were among the 7 records flagged before repetition; all 8 matched controls stayed below 42 mV | 7 flagged records; 8 matched controls |
+| Eight published datasets | R² above the value reported by the source study on 6 of 8 | 8 datasets, nested leave-one-out |
+| Pretrained representations | Lowered R² in all six cases tested (by 11–37%) | 6 representations on 2 datasets (160 and 99 records) |
+| Finite-pool search | Near-optimum after 66 vs 113 (GP) and 126 (RF) evaluations for OER stability (Ru dissolution); 16 vs 39 and 76 for polymer HER | 2 tasks, one search each |
+| Controlled extrapolation | First batch contained 35% and 43% true top-quartile candidates (25% expected at random) | 2 tasks; first batches of 23 and 14 candidates |
 
 ## Install
 
-Use Python 3.12.
+Use Python 3.12. Python 3.13 is not supported, because the pinned NumPy 1.26.4 does not install on it.
 
 ```bash
 python -m venv .venv
@@ -101,6 +101,7 @@ Things to know before you run it:
 - Stability screening is skipped below 20 training observations. If no model passes, the five most frequently selected models are retained.
 - NUTS uses four chains, 1,000 warm-up iterations and 2,000 draws per chain. Failed weight convergence triggers one retry with 2,000 warm-up iterations.
 - Family scales default to one and can be supplied through `family_priors` with keys `linear`, `tree_based`, `locally_smooth` and `monotonic`.
+- If stability screening retains a single model, its weight is exactly one and there is no composition uncertainty to propagate: `predict_with_uncertainty` returns zero for every candidate and trust is constant. `model.diagnostics_report()["n_active_models"]` shows how many models were retained.
 - Automatic feature-strategy selection is off by default; enable it with `feature_strategy="auto"`.
 
 ## Computational cost
@@ -140,18 +141,20 @@ Workflow-specific inputs:
 
 ## Data
 
-The eight benchmark datasets come from the source studies below. Please cite them when you use their data.
+The source tables for the eight benchmark tasks and the data from the automated OER campaign are in [`data/`](data/), with target columns and row counts listed in [`data/README.md`](data/README.md). Please cite the source studies when you use their data.
 
-| Task in the paper | Source study |
-| --- | --- |
-| Formate oxidation | Zhang et al., *Nature* **647**, 390–396 (2025) |
-| Organic laser emitters | Strieth-Kalthoff et al., *Science* **384**, eadk9227 (2024) |
-| Inorganic synthesis | Bai et al., *Nat. Catal.* **9**, 28–36 (2026) |
-| OER activity | Zhou et al., *Nat. Synth.* **5**, 730–739 (2026) |
-| Photovoltaics | Wu et al., *Science* **386**, 1256–1264 (2024) |
-| Polymer HER | Bai et al., *J. Am. Chem. Soc.* **141**, 9063–9071 (2019) |
-| OER stability (task name `ru_dissolution` in finite-pool search) | Bai et al., *Nat. Catal.* **9**, 28–36 (2026) |
-| Battery performance | Lin et al., *Sci. Adv.* **11**, eadu4391 (2025) |
+| File | Task in the paper | Source study |
+| --- | --- | --- |
+| `data/formate_oxidation.xlsx` | Formate oxidation | Zhang et al., *Nature* **647**, 390–396 (2025) |
+| `data/organic_laser_emitters.csv` | Organic laser emitters | Strieth-Kalthoff et al., *Science* **384**, eadk9227 (2024) |
+| `data/inorganic_synthesis_oer_stability.csv` | Inorganic synthesis; OER stability (task name `ru_dissolution` in finite-pool search) | Bai et al., *Nat. Catal.* **9**, 28–36 (2026) |
+| `data/oer_activity.xlsx` | OER activity | Zhou et al., *Nat. Synth.* **5**, 730–739 (2026) |
+| `data/photovoltaics.xlsx` | Photovoltaics | Wu et al., *Science* **386**, 1256–1264 (2024) |
+| `data/polymer_her.xlsx` | Polymer HER | Bai et al., *J. Am. Chem. Soc.* **141**, 9063–9071 (2019) |
+| `data/battery_performance.csv` | Battery performance | Lin et al., *Sci. Adv.* **11**, eadu4391 (2025) |
+| `data/oer_campaign_initial.csv` | Initial record of the automated OER campaign (125 experiments) | This work |
+| `data/oer_campaign_recommendations.csv` | The 11 recommended conditions: predicted and measured overpotential | This work |
+| `data/oer_campaign_repeats_priority.csv`, `data/oer_campaign_repeats_controls.csv` | Original and repeated overpotential for the 7 prioritized records and 8 matched controls | This work |
 
 ## Representation and LLM interfaces
 
@@ -173,7 +176,7 @@ For language-model comparisons use `sparc.llm:make_comparison`. Its configuratio
 @article{feng2026sparc,
   title   = {SPARC: Evidence-guided adaptive model composition for materials discovery},
   author  = {Feng, Sissi and Han, Yuchen and Zhang, Runze and Bai, Jiaru and
-             Sutherland, Brandon and Shayesteh Zeraati, Ali and
+             Li, Yixi and Sutherland, Brandon and Shayesteh Zeraati, Ali and
              Hattrick-Simpers, Jason and Bernales, Varinia and
              Aspuru-Guzik, Al{\'a}n and Bai, Yang},
   journal = {arXiv preprint arXiv:2611.19050},

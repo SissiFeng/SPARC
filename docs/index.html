@@ -204,7 +204,7 @@ svg .cellu{fill:var(--rule)}
     <div>
       <p class="eyebrow">Sparse Predictive Aggregation of Regression Components</p>
       <h1>Let the evidence decide which models <em>get a say</em>.</h1>
-      <p class="lede">In a self-driving laboratory, the model that picks the next experiment is usually chosen before the first one is run. SPARC keeps that choice open. Every new measurement can change which models influence the next decision, and which existing measurements deserve a second look.</p>
+      <p class="lede">In materials discovery, the model that picks the next experiment is usually chosen before the first one is run. SPARC keeps that choice open. Every new measurement can change which models influence the next decision, and which existing measurements deserve a second look.</p>
       <div class="cta">
         <a class="btn primary" href="https://arxiv.org/abs/2611.19050">Read the paper</a>
         <a class="btn" href="https://github.com/SissiFeng/SPARC">Code on GitHub</a>
@@ -410,7 +410,7 @@ svg .cellu{fill:var(--rule)}
         <span class="mv">RESULT 01</span>
         <h3>Eleven predictions, fixed before measurement</h3>
         <p>SPARC was fitted to 125 initial experiments and recommended 11 new conditions for an automated alkaline oxygen-evolution campaign. Each hollow marker is a prediction recorded before the experiment. Each filled marker is what the platform then measured.</p>
-        <p class="note">Overpotential at 10 mA cm⁻². Eight of eleven fell below 300 mV, with a best value of 242 mV, against 18 of 125 in the initial record. Mean absolute prediction error 26.7 mV. Individual values are read from Supplementary Fig. 6. This compares two sets of experiments; it is not a randomized trial.</p>
+        <p class="note">Overpotential at 10 mA cm⁻². Eight of eleven fell below 300 mV, with a best value of 242 mV, against 18 of 125 in the initial record. Mean absolute prediction error 26.7 mV. This compares two sets of experiments; it is not a randomized trial.</p>
       </div>
       <div class="fig">
         <svg id="r1" viewBox="0 0 640 400" role="img" aria-label="Predicted and measured overpotential for the eleven recommended conditions"></svg>
@@ -422,7 +422,7 @@ svg .cellu{fill:var(--rule)}
         <span class="mv">RESULT 02</span>
         <h3>Flagged before anyone repeated them</h3>
         <p>Seven records carrying two or more diagnostic flags were repeated, together with eight unflagged controls matched in feature space. Group assignments were fixed before the repeat measurements.</p>
-        <p class="note">Absolute difference between original and repeated overpotential. All three deviations above 130 mV are flagged records, and every control is below 42 mV. Means 76 and 27 mV; medians 36.3 and 32.5 mV. Individual values are read from Fig. 5f. Descriptive summary of small groups.</p>
+        <p class="note">Absolute difference between original and repeated overpotential. All three deviations above 130 mV are flagged records, and every control is below 42 mV. Means 76 and 27 mV; medians 36.3 and 32.5 mV. Descriptive summary of small groups.</p>
       </div>
       <div class="fig">
         <svg id="r2" viewBox="0 0 640 250" role="img" aria-label="Original to repeat differences for flagged records and controls"></svg>
@@ -471,7 +471,7 @@ svg .cellu{fill:var(--rule)}
         <span class="mv">RESULT 06</span>
         <h3>A search race in a finite pool</h3>
         <p>Archived outcomes were hidden and revealed one at a time. All three strategies start from the same initial experiments, and each runner stops when its best value so far comes within 0.1% of the pool optimum.</p>
-        <p class="note">Evaluations, including the shared initialization (20 for Ru dissolution, 10 for polymer HER). One search from one initial set per task, so these are case studies and not estimates of average efficiency.</p>
+        <p class="note">Evaluations, including the shared initialization (20 for OER stability, 10 for polymer HER). One search from one initial set per task, so these are case studies and not estimates of average efficiency.</p>
       </div>
       <div class="fig">
         <svg id="r6" viewBox="0 0 640 270" role="img" aria-label="Evaluations needed by SPARC, Gaussian process and random forest"></svg>
@@ -502,7 +502,7 @@ svg .cellu{fill:var(--rule)}
     <pre id="bib">@article{feng2026sparc,
   title   = {SPARC: Evidence-guided adaptive model composition for materials discovery},
   author  = {Feng, Sissi and Han, Yuchen and Zhang, Runze and Bai, Jiaru and
-             Sutherland, Brandon and Shayesteh Zeraati, Ali and
+             Li, Yixi and Sutherland, Brandon and Shayesteh Zeraati, Ali and
              Hattrick-Simpers, Jason and Bernales, Varinia and
              Aspuru-Guzik, Al{\'a}n and Bai, Yang},
   journal = {arXiv preprint arXiv:2611.19050},
@@ -528,7 +528,7 @@ const NOISE=0.035;
 const truth=x=>0.2+0.8*x-3*Math.pow(Math.max(0,x-0.6),2)+0.05*Math.sin(15*x);
 const G=201, GRID=Array.from({length:G},(_,i)=>i/(G-1));
 const MODELS=[
-  {id:'lin',name:'Linear',family:'additive',cls:'m1'},
+  {id:'lin',name:'Linear',family:'linear',cls:'m1'},
   {id:'tree',name:'Tree',family:'tree-based',cls:'m2'},
   {id:'gp',name:'Smooth',family:'locally smooth',cls:'m3'},
   {id:'mono',name:'Monotonic',family:'monotonic',cls:'m4'}
@@ -659,8 +659,8 @@ function exhibit(id,ms,draw){const q=s=>document.querySelector(s);R[id]={draw,ms
   const b=q('#'+id+'play');if(b)b.addEventListener('click',()=>tween(ms,draw));}
 const n1=v=>v.toFixed(1);
 
-/* 01: prospective campaign. Values read from Supplementary Fig. 6 (predicted, measured), mV */
-const CAMP=[[249,242],[250,272],[258,295],[297,279],[309,254],[309,303],[310,265],[312,304],[313,268],[317,282],[324,308]];
+/* 01: prospective campaign: [predicted, measured] in mV, from data/oer_campaign_recommendations.csv */
+const CAMP=[[249,242.1],[250,272.4],[258,294.7],[297,279.3],[309,254.4],[309,303.3],[310,265.1],[312,304.0],[313,268.0],[317,281.7],[324,307.8]];
 function drawR1(t){const x0=74,x1=604,yT=58,yB=268,vmin=232,vmax=332,y=v=>yT+(vmax-v)/(vmax-vmin)*(yB-yT),x=i=>x0+20+i*(x1-x0-40)/(CAMP.length-1);
   let s='',hits=0;
   for(const v of [240,260,280,300,320])s+=`<line class="gridl" x1="${x0}" x2="${x1}" y1="${n1(y(v))}" y2="${n1(y(v))}"/><text x="${x0-8}" y="${n1(y(v)+4)}" text-anchor="end">${v}</text>`;
@@ -669,7 +669,7 @@ function drawR1(t){const x0=74,x1=604,yT=58,yB=268,vmin=232,vmax=332,y=v=>yT+(vm
   CAMP.forEach((c,i)=>{const a=seg(t,0.02+i*0.02,0.14+i*0.02),m=seg(t,0.3+i*0.035,0.55+i*0.035),cur=c[0]+(c[1]-c[0])*m,ok=c[1]<300;if(m>=1&&ok)hits++;
     if(a>0)s+=`<circle class="hol" opacity="${a.toFixed(2)}" cx="${n1(x(i))}" cy="${n1(y(c[0]))}" r="6"/>`;
     if(m>0){s+=`<line class="${ok?'goods':'muts'}" x1="${n1(x(i))}" x2="${n1(x(i))}" y1="${n1(y(c[0]))}" y2="${n1(y(cur))}"/><circle class="${ok?'good':'mut'}" cx="${n1(x(i))}" cy="${n1(y(cur))}" r="6.5"/>`;
-      if(m>=1&&c[1]===242)s+=`<text class="inkt" x="${n1(x(i)+11)}" y="${n1(y(cur)+4)}">best, 242 mV</text>`;}});
+      if(m>=1&&c[1]===242.1)s+=`<text class="inkt" x="${n1(x(i)+11)}" y="${n1(y(cur)+4)}">best, 242 mV</text>`;}});
   s+=`<text class="big" x="${x0}" y="34">${hits} of 11</text><text class="inkt" x="${x0+112}" y="26">below 300 mV</text><text x="${x0+112}" y="40">hollow: predicted · filled: measured</text>`;
   const uy=318,uw=x1-x0,k=seg(t,0.8,1),lit=Math.round(18*k);
   s+=`<text class="inkt" x="${x0}" y="${uy-8}">Initial record: ${lit} of 125 below 300 mV (14.4%)</text>`;
@@ -679,8 +679,8 @@ function drawR1(t){const x0=74,x1=604,yT=58,yB=268,vmin=232,vmax=332,y=v=>yT+(vm
   document.querySelector('#r1').innerHTML=s;
   document.querySelector('#r1read').innerHTML=t>=1?'Mean absolute prediction error <b>26.7 mV</b>':'';}
 
-/* 02: verification. Values read from Fig. 5f, mV */
-const REP={pri:[165,136,132,36,34,14,12],ctl:[42,37,37,33,32,14,10,9]};
+/* 02: verification: |repeat - original| in mV, from data/oer_campaign_repeats_*.csv */
+const REP={pri:[165.2,136.2,131.8,36.3,34.5,14.2,12.3],ctl:[41.9,37.0,36.9,33.6,31.4,14.3,10.3,9.5]};
 function drawR2(t){const x0=118,x1=612,x=v=>x0+v/180*(x1-x0),rows=[['Flagged (7)',REP.pri,78,'sigf'],['Controls (8)',REP.ctl,158,'good']];
   let s=`<rect class="unseen" style="opacity:.08" x="${n1(x(130))}" y="30" width="${n1(x1-x(130))}" height="170"/><text class="sigt" x="${x1-4}" y="194" text-anchor="end">above 130 mV</text>`;
   for(const v of [0,40,80,120,160])s+=`<line class="gridl" x1="${n1(x(v))}" x2="${n1(x(v))}" y1="30" y2="200"/><text x="${n1(x(v))}" y="216" text-anchor="middle">${v}</text>`;
@@ -690,7 +690,7 @@ function drawR2(t){const x0=118,x1=612,x=v=>x0+v/180*(x1-x0),rows=[['Flagged (7)
     const seen=[];vals.forEach((v,i)=>{const m=seg(t,0.05+r*0.3+i*0.03,0.45+r*0.3+i*0.03),near=seen.filter(u=>Math.abs(u-v)<5).length;seen.push(v);
       const cy=y+(near%2?-1:1)*Math.ceil(near/2)*13;
       s+=`<circle class="${cls}" stroke="var(--paper)" stroke-width="1.5" cx="${n1(x(v*m))}" cy="${cy}" r="6.5"/>`;
-      if(m>=1&&v>130)s+=`<text class="inkt" x="${n1(x(v))}" y="${cy<y?cy-12:cy+21}" text-anchor="middle">${v}</text>`;});});
+      if(m>=1&&v>130)s+=`<text class="inkt" x="${n1(x(v))}" y="${cy<y?cy-12:cy+21}" text-anchor="middle">${Math.round(v)}</text>`;});});
   document.querySelector('#r2').innerHTML=s;
   document.querySelector('#r2read').innerHTML=t>=1?'Mean <b>76</b> vs <b>27 mV</b> · median <b>36.3</b> vs <b>32.5 mV</b>':'';}
 
@@ -739,17 +739,17 @@ function drawR5(t){const x0=150,x1=486,x=v=>x0+v/0.8*(x1-x0);let s='';
   document.querySelector('#r5read').innerHTML=t>=1?'Pretrained representations: <b>lower in 6 of 6</b> · selector: <b>+3.6%</b> and <b>−2.8%</b>':'';}
 
 /* 06: finite-pool search race: [task, init, [name, evaluations]] */
-const RACE=[['Ru dissolution',20,[['SPARC',66],['GP',113],['RF',126]]],['Polymer HER',10,[['SPARC',16],['GP',39],['RF',76]]]];
+const RACE=[['OER stability (Ru dissolution)',20,[['SPARC',66],['GP',113],['RF',126]]],['Polymer HER',10,[['SPARC',16],['GP',39],['RF',76]]]];
 function drawR6(t){const x0=120,x1=600,x=v=>x0+v/130*(x1-x0),ev=Math.round(130*Math.min(1,t/0.92));let s='';
   for(const v of [0,25,50,75,100,125])s+=`<line class="gridl" x1="${n1(x(v))}" x2="${n1(x(v))}" y1="24" y2="232"/><text x="${n1(x(v))}" y="248" text-anchor="middle">${v}</text>`;
   s+=`<text class="axl" x="${(x0+x1)/2}" y="264" text-anchor="middle">evaluations (including initialization)</text>`;
   RACE.forEach(([task,init,runs],g)=>{const top=40+g*104;
-    s+=`<text class="inkt" x="8" y="${top-6}" style="font-weight:500">${task}</text><rect class="cellu" x="${x0}" y="${top+2}" width="${n1(x(init)-x0)}" height="72"/><text x="${n1(x(init)+4)}" y="${top-6}">shared start: ${init}</text>`;
+    s+=`<text class="inkt" x="8" y="${top-6}" style="font-weight:500">${task}</text><rect class="cellu" x="${x0}" y="${top+2}" width="${n1(x(init)-x0)}" height="72"/><text x="${x1}" y="${top-6}" text-anchor="end">shared start: ${init} evaluations</text>`;
     runs.forEach(([nm,stop],i)=>{const y=top+14+i*24,cur=Math.max(init,Math.min(stop,ev)),done=ev>=stop,sp=i===0;
       s+=`<text ${sp?'class="inkt"':''} x="${x0-10}" y="${y+4}" text-anchor="end">${nm}</text><line class="lane" x1="${x0}" x2="${x1}" y1="${y}" y2="${y}"/><line stroke="var(--${sp?'ink':'muted'})" stroke-width="6" stroke-linecap="round" x1="${x0}" x2="${n1(x(cur))}" y1="${y}" y2="${y}"/><circle class="${sp?'sigf':'mut'}" cx="${n1(x(cur))}" cy="${y}" r="7"/>`;
       if(done)s+=`<text class="inkt" x="${n1(x(stop)+12)}" y="${y+4}">${stop}</text>`;});});
   document.querySelector('#r6').innerHTML=s;
-  document.querySelector('#r6read').innerHTML=t>=1?'Ru dissolution <b>66</b> vs 113 and 126 · polymer HER <b>16</b> vs 39 and 76':`Evaluation <b>${ev}</b>`;}
+  document.querySelector('#r6read').innerHTML=t>=1?'OER stability <b>66</b> vs 113 and 126 · polymer HER <b>16</b> vs 39 and 76':`Evaluation <b>${ev}</b>`;}
 
 /* 07: first extrapolation batch: [task, batch size, top-quartile count, percent] */
 const EXT=[['Formate oxidation',23,8,35],['OER activity',14,6,43]];
