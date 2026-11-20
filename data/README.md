@@ -23,8 +23,13 @@ Notes on layout:
 
 # Automated OER campaign
 
+Data from the prospective campaign reported in the paper. Overpotentials are in mV at 10 mA cm⁻².
+
 | File | Content | Rows |
 | --- | --- | --- |
-| `oer_campaign_initial.csv` | Initial record of the automated alkaline OER campaign: deposition temperature, current and time, precursor amounts (mmol) for seven transition-metal cations as chloride or sulfate salts, complexing-agent volume, final precursor pH, and the response `lsv`, the overpotential in mV at 10 mA cm⁻² | 125 |
+| `oer_campaign_initial.csv` | Initial record the model was fitted to. Eighteen records are below 300 mV. | 125 |
+| `oer_campaign_recommendations.csv` | The recommended conditions, with the prediction fixed before measurement (`lsv_model_pred`) and the measured value (`lsv`). Eight are below 300 mV; the lowest is 242 mV. | 11 |
+| `oer_campaign_repeats_priority.csv` | Records prioritized for re-measurement (two or more diagnostic flags), with the original value (`lsv_prev_expt`) and the repeat (`lsv`). | 7 |
+| `oer_campaign_repeats_controls.csv` | Unflagged matched controls, with the original value (`lsv_prev_expt`), the repeat (`lsv`) and the model prediction (`lsv_model_pred`). | 8 |
 
-Eighteen of the 125 records have an overpotential below 300 mV.
+Columns shared by all four files: deposition temperature (°C), deposition current (mA) and time (s); precursor amounts in mmol for seven transition-metal cations as chloride, nitrate or sulfate salts (nitrate columns are all zero); complexing-agent volume; final precursor pH; and `lsv`, the measured overpotential.
