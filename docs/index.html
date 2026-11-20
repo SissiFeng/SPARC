@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPARC Explained</title>
+<meta name="description" content="An animated, interactive explanation of SPARC: evidence-guided adaptive model composition for materials discovery.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* layout: lab-ledger page; text column beside a live figure, mono readouts, graph-paper figures */
+  --paper:#f2f5f6; --panel:#ffffff; --ink:#0d1b25; --muted:#566773; --rule:#d3dce1; --grid:#e6ecef;
+  --m1:#2c6be0; --m2:#0b9a86; --m3:#e07a1f; --m4:#8a52d4; --signal:#d93a2b; --good:#1c8a5a;
+  --display:"Bricolage Grotesque","Avenir Next","Segoe UI",sans-serif;
+  --body:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0b1319; --panel:#111c24; --ink:#e7eef2; --muted:#93a4b0; --rule:#26343e; --grid:#1a2630;
+  --m1:#6f9df5; --m2:#34c4ae; --m3:#f09a4a; --m4:#b088ee; --signal:#ff6a58; --good:#4cc08a; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --paper:#0b1319; --panel:#111c24; --ink:#e7eef2; --muted:#93a4b0; --rule:#26343e; --grid:#1a2630;
+  --m1:#6f9df5; --m2:#34c4ae; --m3:#f09a4a; --m4:#b088ee; --signal:#ff6a58; --good:#4cc08a; color-scheme:dark;}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration-color:var(--signal);text-underline-offset:3px}
+a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 clamp(16px,4vw,40px)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-0.02em}
+p{margin:0}
+.top{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--rule);font-size:14px}
+.top .brand{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:0.02em}
+.top nav{display:flex;flex-wrap:wrap;gap:6px 18px;font-family:var(--mono);font-size:13px}
+.hero{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(24px,4vw,56px);align-items:center;padding:clamp(32px,6vw,72px) 0 clamp(28px,4vw,48px)}
+.hero h1{font-size:clamp(38px,5.2vw,66px);line-height:0.98;font-weight:800}
+.hero h1 em{font-style:normal;color:var(--signal)}
+.eyebrow{font-family:var(--mono);font-size:12.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);margin-bottom:18px}
+.lede{font-size:19px;color:var(--muted);max-width:34em;margin-top:22px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.btn{font-family:var(--mono);font-size:13.5px;padding:9px 14px;border:1px solid var(--ink);background:transparent;color:var(--ink);border-radius:3px;cursor:pointer;text-decoration:none;display:inline-flex;gap:8px;align-items:center;line-height:1.2}
+.btn:hover{background:var(--ink);color:var(--paper)}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn.primary:hover{background:var(--signal);border-color:var(--signal);color:#fff}
+.btn[disabled]{opacity:.45;cursor:default;pointer-events:none}
+.fig{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.fig svg{display:block;width:100%;height:auto}
+.figrow{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap}
+.figrow{align-items:center}
+.figrow>.grow{flex:1 1 300px;min-width:0}
+.figrow>.side{flex:0 0 168px}
+.controls{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.controls label{font-family:var(--mono);font-size:12.5px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.controls input[type=range]{accent-color:var(--signal);width:130px}
+.readout{font-family:var(--mono);font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;min-height:1.5em;line-height:1.5}
+.readout b{color:var(--ink);font-weight:500}
+.note{font-size:13.5px;color:var(--muted);border-left:2px solid var(--rule);padding-left:10px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:var(--mono);font-size:12px;border:1px solid var(--rule);background:transparent;color:var(--ink);padding:4px 9px;border-radius:99px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.chip[aria-pressed="false"]{opacity:.4;text-decoration:line-through}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);margin-bottom:clamp(40px,7vw,88px)}
+.stat{padding:20px 20px 22px 0}
+.stat+.stat{border-left:1px solid var(--rule);padding-left:20px}
+.stat .n{font-family:var(--display);font-weight:800;font-size:clamp(34px,4.4vw,54px);line-height:1;letter-spacing:-0.03em}
+.stat .n small{font-size:.45em;font-weight:600;color:var(--muted);letter-spacing:0}
+.stat p{font-size:14.5px;color:var(--muted);margin-top:8px;max-width:30em}
+.sect-head{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(24px,4vw,56px);margin-bottom:28px}
+.sect-head h2{font-size:clamp(28px,3.6vw,44px);line-height:1.04;font-weight:800}
+.sect-head p{color:var(--muted);align-self:end;max-width:36em}
+.move{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(20px,4vw,56px);padding:clamp(28px,4vw,44px) 0;border-top:1px solid var(--rule);align-items:start}
+.move .txt{display:flex;flex-direction:column;gap:14px;position:sticky;top:20px}
+.move .mv{font-family:var(--mono);font-size:13px;color:var(--signal);letter-spacing:0.08em}
+.move h3{font-size:clamp(23px,2.5vw,31px);line-height:1.1;font-weight:700}
+.move p{max-width:33em}
+.formula{font-family:var(--mono);font-size:14px;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:10px 12px;overflow-x:auto;white-space:nowrap}
+section{padding:clamp(20px,3vw,36px) 0}
+.band .move:first-of-type{border-top:0}
+.band .fig{background:var(--paper)}
+.band{background:var(--panel);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin:clamp(36px,6vw,72px) 0;padding:clamp(36px,6vw,72px) 0}
+.lab{align-items:start;display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4fr);gap:18px}
+.lab .fig{background:var(--paper)}
+.wbars{display:flex;flex-direction:column;gap:9px}
+.wbar{display:grid;grid-template-columns:86px 1fr 44px;gap:8px;align-items:center;font-family:var(--mono);font-size:12.5px}
+.wbar .track{height:14px;background:var(--grid);border-radius:2px;overflow:hidden}
+.wbar .fill{height:100%;width:0;border-radius:2px;transition:width .7s cubic-bezier(.2,.7,.2,1)}
+.wbar.off{color:var(--muted)}
+.wbar.off .nm{text-decoration:line-through}
+.wbar .val{text-align:right;font-variant-numeric:tabular-nums}
+.label{font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted)}
+.log{font-family:var(--mono);font-size:12.5px;color:var(--muted);list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:132px;overflow:auto}
+.log li b{color:var(--ink);font-weight:500}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:7px 8px;text-align:left;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--muted);font-weight:500}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+.lamp{display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid var(--muted);vertical-align:-1px}
+.lamp.on{background:var(--signal);border-color:var(--signal)}
+.pill{font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid var(--rule);white-space:nowrap}
+.pill.pri{background:var(--signal);border-color:var(--signal);color:#fff}
+.pill.ok{color:var(--good);border-color:var(--good)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:18px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.card h3{font-size:20px;font-weight:700}
+.card .cap{font-size:13.5px;color:var(--muted)}
+.hb{display:grid;grid-template-columns:132px 1fr;gap:4px 10px;align-items:center;font-size:13px}
+.hb .nm{color:var(--ink)}
+.hb .bars{display:flex;flex-direction:column;gap:3px}
+.hb .b{height:12px;border-radius:2px;position:relative;min-width:2px;transition:width 1s cubic-bezier(.2,.7,.2,1)}
+.hb .b span{position:absolute;left:100%;margin-left:6px;top:-1px;line-height:1.2;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.hb .b.sparc{background:var(--ink)}
+.hb .b.ref{background:var(--rule)}
+.hb .b.alt{background:var(--m1)}
+.hb .b.llm{background:var(--m3)}
+.hb .barwrap{padding-right:46px}
+.key{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.key i{display:inline-block;width:12px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.heat td{text-align:center;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;border:2px solid var(--paper);padding:6px 4px;color:var(--ink)}
+.heat th{font-size:10.5px;text-align:center;border:0;padding:4px 2px;text-transform:none;letter-spacing:0}
+.heat th.row{text-align:left;white-space:nowrap;padding-right:8px}
+details{border-top:1px solid var(--rule);padding:14px 0}
+details:last-of-type{border-bottom:1px solid var(--rule)}
+summary{cursor:pointer;font-family:var(--display);font-weight:700;font-size:19px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font-family:var(--mono);font-weight:400;color:var(--signal)}
+details[open] summary::after{content:"–"}
+details p{color:var(--muted);max-width:44em;margin-top:10px}
+.limits{columns:2;column-gap:40px;padding:0;margin:0;list-style:none}
+.limits li{break-inside:avoid;padding:10px 0 10px 16px;border-top:1px solid var(--rule);position:relative;color:var(--muted);font-size:15.5px}
+.limits li::before{content:"";position:absolute;left:0;top:19px;width:6px;height:6px;background:var(--signal)}
+pre{font-family:var(--mono);font-size:12.5px;background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px;overflow-x:auto;margin:0;line-height:1.5}
+footer{border-top:1px solid var(--rule);margin-top:48px;padding:22px 0 40px;font-size:13.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between}
+/* svg parts */
+svg text{font-family:var(--mono);fill:var(--muted);font-size:11px}
+svg .gridl{stroke:var(--grid);stroke-width:1}
+svg .axis{stroke:var(--ink);stroke-width:1}
+svg .axl{font-size:11.5px;fill:var(--muted)}
+svg .curve{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+svg .m1{stroke:var(--m1)} svg .m2{stroke:var(--m2)} svg .m3{stroke:var(--m3)} svg .m4{stroke:var(--m4)}
+svg .f1{fill:var(--m1)} svg .f2{fill:var(--m2)} svg .f3{fill:var(--m3)} svg .f4{fill:var(--m4)}
+svg .pt{fill:var(--ink);stroke:var(--panel);stroke-width:1.5}
+svg .pt.new{fill:var(--signal)}
+svg .pt.dim{opacity:.18}
+svg .pt.hid{fill:var(--panel);stroke:var(--signal);stroke-width:2}
+svg .mu{fill:none;stroke:var(--ink);stroke-width:2.6;stroke-linejoin:round}
+svg .bandf{fill:var(--ink);opacity:.11}
+svg .spag{fill:none;stroke:var(--ink);stroke-width:.8;opacity:.16}
+svg .unseen{fill:var(--signal);opacity:.045}
+svg .sig{stroke:var(--signal);fill:none;stroke-width:2}
+svg .sigf{fill:var(--signal)}
+svg .sigt{fill:var(--signal);font-size:11.5px}
+svg .dash{stroke-dasharray:4 4}
+svg .truth{fill:none;stroke:var(--good);stroke-width:1.6;stroke-dasharray:2 5;stroke-linecap:round}
+svg .inkt{fill:var(--ink)}
+svg .cell{stroke:var(--panel);stroke-width:1.5}
+svg .empty{fill:var(--grid)}
+svg.hide-m1 .m1,svg.hide-m2 .m2,svg.hide-m3 .m3,svg.hide-m4 .m4{display:none}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+svg.drawing .curve{stroke-dasharray:1;animation:draw 1.3s ease-out both}
+svg.drawing .curve.m2{animation-delay:.25s} svg.drawing .curve.m3{animation-delay:.5s} svg.drawing .curve.m4{animation-delay:.75s}
+@keyframes pop{from{r:14;opacity:0}to{opacity:1}}
+svg .pt.pop{animation:pop .6s ease-out both}
+@media (max-width:900px){
+  .hero,.sect-head,.move,.lab,.grid2{grid-template-columns:minmax(0,1fr)}
+  .move .txt{position:static}
+  .stats{grid-template-columns:minmax(0,1fr)}
+  .stat+.stat{border-left:0;border-top:1px solid var(--rule);padding-left:0}
+  .limits{columns:1}
+}
+@media (max-width:600px){svg[viewBox^="0 0 640"] text{font-size:15px}svg[viewBox^="0 0 640"] .axl{display:none}}
+@media (max-width:480px){body{font-size:16px}.hb{grid-template-columns:96px 1fr}.wbar{grid-template-columns:74px 1fr 40px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+
+svg .good{fill:var(--good)} svg .goods{stroke:var(--good);fill:none;stroke-width:2}
+svg .mut{fill:var(--muted)} svg .muts{stroke:var(--muted);fill:none;stroke-width:1.6}
+svg .hol{fill:var(--paper);stroke:var(--ink);stroke-width:1.6}
+svg .big{font-family:var(--display);font-weight:800;font-size:26px;fill:var(--ink)}
+svg .lane{stroke:var(--grid);stroke-width:6;stroke-linecap:round}
+svg .cellu{fill:var(--rule)}
+.chip.pick[aria-pressed="false"]{opacity:1;text-decoration:none;color:var(--muted)}
+.chip.pick[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <span class="brand">SPARC</span>
+    <nav aria-label="Links">
+      <a href="#moves">Algorithm</a>
+      <a href="#loop">Live loop</a>
+      <a href="#verify">Verification</a>
+      <a href="#results">Results</a>
+      <a href="https://arxiv.org/abs/2611.19050">arXiv:2611.19050</a>
+      <a href="https://github.com/SissiFeng/SPARC">Code</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <p class="eyebrow">Sparse Predictive Aggregation of Regression Components</p>
+      <h1>Let the evidence decide which models <em>get a say</em>.</h1>
+      <p class="lede">In a self-driving laboratory, the model that picks the next experiment is usually chosen before the first one is run. SPARC keeps that choice open. Every new measurement can change which models influence the next decision, and which existing measurements deserve a second look.</p>
+      <div class="cta">
+        <a class="btn primary" href="https://arxiv.org/abs/2611.19050">Read the paper</a>
+        <a class="btn" href="https://github.com/SissiFeng/SPARC">Code on GitHub</a>
+        <a class="btn" href="https://doi.org/10.5281/zenodo.24201692">Archived release</a>
+      </div>
+    </div>
+    <div class="fig" aria-label="Animated example: six rounds of the SPARC loop">
+      <svg id="heroSvg" viewBox="0 0 640 340" role="img" aria-label="Four models fitted to sparse measurements, with the composed prediction and the next recommended experiment"></svg>
+      <div class="wbars" id="heroBars"></div>
+      <div class="controls">
+        <button class="btn" id="heroPlay" type="button">Replay six rounds</button>
+        <span class="readout" id="heroRead"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n">8 <small>of 11</small></div><p>recommended conditions reached overpotentials below 300 mV at 10 mA cm⁻² in an automated alkaline OER campaign. In the initial record it was 18 of 125.</p></div>
+    <div class="stat"><div class="n">3 <small>of 3</small></div><p>original–repeat deviations above 130 mV fell among the 7 records flagged before repetition. All 8 matched controls stayed below 42 mV.</p></div>
+    <div class="stat"><div class="n">6 <small>of 8</small></div><p>published materials datasets where R² exceeded the value reported by the source study. Source studies used their own evaluation splits.</p></div>
+  </div>
+
+  <section id="moves">
+    <div class="sect-head">
+      <h2>The algorithm in six moves</h2>
+      <p>Each figure below runs the real computation in your browser on a small one-dimensional example: 20 noisy measurements of a hidden response curve, and one model from each of SPARC's four structural families. Press play, drag the sliders, hover the plots.</p>
+    </div>
+
+    <article class="move">
+      <div class="txt">
+        <span class="mv">MOVE 01</span>
+        <h3>Sparse data leave several models standing</h3>
+        <p>Twenty measurements cover the left side of the design space. A straight line, a tree, a smooth kernel model and a monotonic fit all describe them reasonably well. Where nobody has measured yet, they tell four different stories.</p>
+        <p>Committing to one of them now would decide where the campaign goes next. SPARC keeps all four in play until the data can tell them apart.</p>
+        <p class="note">The full method uses a library of 12 models grouped into these four families.</p>
+      </div>
+      <div class="fig">
+        <svg id="f1" viewBox="0 0 640 340" role="img" aria-label="Four model fits that agree on the measured region and diverge beyond it"></svg>
+        <div class="chips" id="f1chips"></div>
+      </div>
+    </article>
+
+    <article class="move">
+      <div class="txt">
+        <span class="mv">MOVE 02</span>
+        <h3>Score each model on data it has not seen</h3>
+        <p>SPARC hides one measurement, refits every model on the rest, and asks each model to predict the hidden value. Doing this for every measurement fills the evidence matrix: one row per measurement, one column per model.</p>
+        <p>Every entry is a genuine out-of-sample prediction. A model earns influence by predicting what it was not shown, never by how closely it fits its own training data.</p>
+        <div class="formula">P[i, m] = f<sub>m</sub><sup>(−i)</sup>(x<sub>i</sub>)</div>
+      </div>
+      <div class="fig">
+        <div class="figrow">
+          <div class="grow"><svg id="f2" viewBox="0 0 640 340" role="img" aria-label="Leave-one-out refits predicting a hidden measurement"></svg></div>
+          <div class="side"><svg id="f2m" viewBox="0 0 190 260" role="img" aria-label="Evidence matrix of out-of-fold predictions"></svg></div>
+        </div>
+        <div class="controls">
+          <button class="btn" id="f2play" type="button">Play</button>
+          <button class="btn" id="f2step" type="button">Step</button>
+          <span class="readout" id="f2read"></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="move">
+      <div class="txt">
+        <span class="mv">MOVE 03</span>
+        <h3>Keep the models that keep getting picked</h3>
+        <p>A model that looks useful on one draw of the data may not on the next. SPARC redraws 80% of the records 50 times, rebuilds the evidence each time, and fits a sparse non-negative regression of the measurements on the models' predictions.</p>
+        <p>Models selected in at least 60% of the draws enter the active set. The others receive a weight of exactly zero.</p>
+        <p class="note">In the paper, screening applies once 20 or more records are available.</p>
+      </div>
+      <div class="fig">
+        <div class="figrow">
+          <div class="grow"><svg id="f3" viewBox="0 0 640 340" role="img" aria-label="Records included in the current resample"></svg></div>
+          <div class="side"><svg id="f3b" viewBox="0 0 190 260" role="img" aria-label="Selection frequency of each model across resamples"></svg></div>
+        </div>
+        <div class="controls">
+          <button class="btn" id="f3play" type="button">Play</button>
+          <span class="readout" id="f3read"></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="move">
+      <div class="txt">
+        <span class="mv">MOVE 04</span>
+        <h3>Weigh the survivors, and keep the uncertainty</h3>
+        <p>The surviving models share influence through non-negative weights that sum to one. SPARC does not settle on a single set of weights. It samples many plausible sets from a posterior with sparse hierarchical priors, so a model the data cannot yet rule out keeps a share.</p>
+        <p>Each dot is one draw. A wide cloud means the data still allow very different ways of combining the models.</p>
+        <div class="formula">w<sub>m</sub> = |a<sub>m</sub>| / Σ<sub>j</sub>|a<sub>j</sub>|,&nbsp; y ~ N(Pw, σ²)</div>
+      </div>
+      <div class="fig">
+        <svg id="f4" viewBox="0 0 640 250" role="img" aria-label="Posterior draws of the composition weights"></svg>
+        <div class="controls">
+          <button class="btn" id="f4play" type="button">Play</button>
+          <span class="readout" id="f4read"></span>
+        </div>
+      </div>
+    </article>
+
+    <article class="move">
+      <div class="txt">
+        <span class="mv">MOVE 05</span>
+        <h3>Where the models agree, trust is high</h3>
+        <p>Push every weight draw through the fitted models and you get a bundle of composed predictions. The bundle is tight where the retained models agree and fans out where they diverge, even though every candidate shares the same posterior over weights.</p>
+        <p>SPARC combines this candidate-specific spread with a residual scale into a trust score between 0 and 1.</p>
+        <div class="formula">T(x) = 1 / (1 + √(u(x)² + u<sub>res</sub>²) / q)</div>
+        <p class="note">Trust is a decision score on the response scale. It is not a calibrated probability that a prediction is correct.</p>
+      </div>
+      <div class="fig">
+        <svg id="f5" viewBox="0 0 640 380" role="img" aria-label="Composed prediction with dispersion band and trust strip"></svg>
+        <div class="controls">
+          <label for="q5">Reference scale q <input type="range" id="q5" min="0.03" max="0.6" step="0.01"></label>
+          <span class="readout" id="f5read">Hover the plot to read a candidate.</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="move">
+      <div class="txt">
+        <span class="mv">MOVE 06</span>
+        <h3>Trust tempers exploration</h3>
+        <p>The next experiment maximises predicted response plus an exploration bonus. The bonus grows where the models disagree, and trust scales it back as the search moves into poorly supported regions, so the bonus can never exceed β·q.</p>
+        <p>Then the experiment is run, the result joins the record, and all six moves repeat with one more row of evidence.</p>
+        <div class="formula">a(x) = μ(x) + β · u(x) · T(x)</div>
+      </div>
+      <div class="fig">
+        <svg id="f6" viewBox="0 0 640 340" role="img" aria-label="Acquisition score and the recommended next experiment"></svg>
+        <div class="controls">
+          <label for="b6">Exploration β <input type="range" id="b6" min="0" max="4" step="0.02"></label>
+          <label for="q6">Reference scale q <input type="range" id="q6" min="0.03" max="0.6" step="0.01"></label>
+        </div>
+        <span class="readout" id="f6read"></span>
+      </div>
+    </article>
+  </section>
+</div>
+
+<div class="band" id="loop">
+  <div class="wrap">
+    <div class="sect-head">
+      <h2>Run the loop and watch the weights move</h2>
+      <p>Each click runs the recommended experiment on the hidden response curve, adds the result to the record and repeats all six moves. The first measurement lands where the models disagree most, and one model pays for its confident guess.</p>
+    </div>
+    <div class="lab">
+      <div class="fig">
+        <svg id="labSvg" viewBox="0 0 640 340" role="img" aria-label="Live SPARC loop on the example"></svg>
+        <div class="controls">
+          <button class="btn primary" id="labRun" type="button">Run next experiment</button>
+          <button class="btn" id="labRun5" type="button">Run five</button>
+          <button class="btn" id="labReset" type="button">Reset</button>
+          <label for="labTruth"><input type="checkbox" id="labTruth"> Show hidden curve</label>
+        </div>
+      </div>
+      <div class="fig">
+        <span class="label">Model influence now</span>
+        <div class="wbars" id="labBars"></div>
+        <span class="label">Model influence by round</span>
+        <svg id="labHist" viewBox="0 0 360 120" role="img" aria-label="Posterior-mean weights by round"></svg>
+        <span class="label">Record</span>
+        <ul class="log" id="labLog"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+  <section id="verify">
+    <div class="sect-head">
+      <h2>Then question the record itself</h2>
+      <p>A closed loop inherits every faulty measurement in its record. SPARC screens existing records with four independent diagnostics and prioritizes those with two or more flags for repetition, before anyone knows whether they will repeat.</p>
+    </div>
+    <article class="move" style="border-top:0;padding-top:0">
+      <div class="txt">
+        <p><strong>Nonconformity.</strong> How unusual is this record's held-out residual compared with the others?</p>
+        <p><strong>Influence.</strong> How far does a simple reference fit move when this record is left out?</p>
+        <p><strong>Isolation.</strong> How easily does an isolation forest separate this record from the rest?</p>
+        <p><strong>Mahalanobis distance.</strong> How far is it from the centre of the feature space?</p>
+        <p class="note">A flag asks for more evidence. It does not show that a measurement is wrong. Try it: slip a gross error into the record, see which lamps light, then repeat the flagged records and their nearest unflagged neighbours.</p>
+      </div>
+      <div class="fig">
+        <svg id="vSvg" viewBox="0 0 640 340" role="img" aria-label="Records with diagnostic flags"></svg>
+        <div class="controls">
+          <button class="btn primary" id="vFault" type="button">Slip in a faulty measurement</button>
+          <button class="btn" id="vRepeat" type="button">Repeat flagged records</button>
+          <button class="btn" id="vReset" type="button">Reset</button>
+        </div>
+        <div class="scroll"><table id="vTable" aria-label="Diagnostic flags and repeat outcomes"></table></div>
+        <span class="readout" id="vRead"></span>
+      </div>
+    </article>
+  </section>
+</div>
+
+<div class="band" id="results">
+  <div class="wrap">
+    <div class="sect-head">
+      <h2>What the paper reports</h2>
+      <p>Seven results, replayed from the numbers in the manuscript. Each animation ends on the reported values.</p>
+    </div>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 01</span>
+        <h3>Eleven predictions, fixed before measurement</h3>
+        <p>SPARC was fitted to 125 initial experiments and recommended 11 new conditions for an automated alkaline oxygen-evolution campaign. Each hollow marker is a prediction recorded before the experiment. Each filled marker is what the platform then measured.</p>
+        <p class="note">Overpotential at 10 mA cm⁻². Eight of eleven fell below 300 mV, with a best value of 242 mV, against 18 of 125 in the initial record. Mean absolute prediction error 26.7 mV. Individual values are read from Supplementary Fig. 6. This compares two sets of experiments; it is not a randomized trial.</p>
+      </div>
+      <div class="fig">
+        <svg id="r1" viewBox="0 0 640 400" role="img" aria-label="Predicted and measured overpotential for the eleven recommended conditions"></svg>
+        <div class="controls"><button class="btn" id="r1play" type="button">Replay</button><span class="readout" id="r1read"></span></div>
+      </div>
+    </article>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 02</span>
+        <h3>Flagged before anyone repeated them</h3>
+        <p>Seven records carrying two or more diagnostic flags were repeated, together with eight unflagged controls matched in feature space. Group assignments were fixed before the repeat measurements.</p>
+        <p class="note">Absolute difference between original and repeated overpotential. All three deviations above 130 mV are flagged records, and every control is below 42 mV. Means 76 and 27 mV; medians 36.3 and 32.5 mV. Individual values are read from Fig. 5f. Descriptive summary of small groups.</p>
+      </div>
+      <div class="fig">
+        <svg id="r2" viewBox="0 0 640 250" role="img" aria-label="Original to repeat differences for flagged records and controls"></svg>
+        <div class="controls"><button class="btn" id="r2play" type="button">Replay</button><span class="readout" id="r2read"></span></div>
+      </div>
+    </article>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 03</span>
+        <h3>Eight published datasets, no extra descriptors</h3>
+        <p>The benchmarks span molecular, polymeric and inorganic materials. SPARC used the descriptors already available for each task and was evaluated by nested leave-one-out.</p>
+        <p class="note">Predictive R². Hollow marker: value reported by the source study. Filled marker: SPARC. SPARC is higher on six of eight, with a relative gain of up to 77% on OER stability. Source studies used their own evaluation splits, so their values give context and are not matched-split baselines.</p>
+      </div>
+      <div class="fig">
+        <svg id="r3" viewBox="0 0 640 330" role="img" aria-label="Reported and SPARC R squared on eight datasets"></svg>
+        <div class="controls"><button class="btn" id="r3play" type="button">Replay</button><span class="readout" id="r3read"></span></div>
+      </div>
+    </article>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 04</span>
+        <h3>Take a component out</h3>
+        <p>Choose a component to remove or replace, and see what happens to R² on each of the eight datasets.</p>
+        <p class="note">Relative change in R² (%) from full SPARC. Single-run point estimates; the size of each contribution depends on the task.</p>
+      </div>
+      <div class="fig">
+        <div class="chips" id="r4chips"></div>
+        <svg id="r4" viewBox="0 0 640 320" role="img" aria-label="Relative change in R squared when a component is removed"></svg>
+        <span class="readout" id="r4read"></span>
+      </div>
+    </article>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 05</span>
+        <h3>More information was not always better</h3>
+        <p>Pretrained representations were appended to SPARC's descriptors on two small datasets. Separately, GPT-5.2 was allowed to choose among SPARC's existing feature strategies and model hypotheses.</p>
+        <p class="note">Leave-one-out R² on 160 records (OER stability) and 99 records (polymer HER). The vertical line marks SPARC with its own descriptors. All six pretrained representations lowered R². The language-model selector raised one task and lowered the other. Single point estimates.</p>
+      </div>
+      <div class="fig">
+        <svg id="r5" viewBox="0 0 640 330" role="img" aria-label="R squared after adding pretrained representations or a language-model selector"></svg>
+        <div class="controls"><button class="btn" id="r5play" type="button">Replay</button><span class="readout" id="r5read"></span></div>
+      </div>
+    </article>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 06</span>
+        <h3>A search race in a finite pool</h3>
+        <p>Archived outcomes were hidden and revealed one at a time. All three strategies start from the same initial experiments, and each runner stops when its best value so far comes within 0.1% of the pool optimum.</p>
+        <p class="note">Evaluations, including the shared initialization (20 for Ru dissolution, 10 for polymer HER). One search from one initial set per task, so these are case studies and not estimates of average efficiency.</p>
+      </div>
+      <div class="fig">
+        <svg id="r6" viewBox="0 0 640 270" role="img" aria-label="Evaluations needed by SPARC, Gaussian process and random forest"></svg>
+        <div class="controls"><button class="btn" id="r6play" type="button">Replay</button><span class="readout" id="r6read"></span></div>
+      </div>
+    </article>
+    <article class="move">
+      <div class="txt">
+        <span class="mv">RESULT 07</span>
+        <h3>Ranking candidates beyond the measured range</h3>
+        <p>Models trained on the initial region ranked candidates outside it. Each dot is one candidate in the first acquired batch, which covers a quarter of the extrapolation pool.</p>
+        <p class="note">Filled dots are in the true top quartile of the pool: 35% for formate oxidation and 43% for OER activity, against 25% expected at random. Predictive uncertainty was 1.27 and 1.75 times that of the initial region.</p>
+      </div>
+      <div class="fig">
+        <svg id="r7" viewBox="0 0 640 190" role="img" aria-label="Top-quartile candidates in the first extrapolation batch"></svg>
+        <div class="controls"><button class="btn" id="r7play" type="button">Replay</button><span class="readout" id="r7read"></span></div>
+      </div>
+    </article>
+  </div>
+</div>
+
+<div class="wrap">
+  <section id="cite">
+    <div class="sect-head">
+      <h2>Cite</h2>
+      <p>Feng, S., Han, Y., Zhang, R. et al. SPARC: Evidence-guided adaptive model composition for materials discovery. Preprint at arXiv:2611.19050 (2026).</p>
+    </div>
+    <pre id="bib">@article{feng2026sparc,
+  title   = {SPARC: Evidence-guided adaptive model composition for materials discovery},
+  author  = {Feng, Sissi and Han, Yuchen and Zhang, Runze and Bai, Jiaru and
+             Sutherland, Brandon and Shayesteh Zeraati, Ali and
+             Hattrick-Simpers, Jason and Bernales, Varinia and
+             Aspuru-Guzik, Al{\'a}n and Bai, Yang},
+  journal = {arXiv preprint arXiv:2611.19050},
+  year    = {2026}
+}</pre>
+    <div class="cta"><button class="btn" id="copyBib" type="button">Copy BibTeX</button></div>
+  </section>
+
+  <footer>
+    <span>Acceleration Consortium, University of Toronto</span>
+    <span><a href="https://arxiv.org/abs/2611.19050">Paper</a> · <a href="https://github.com/SissiFeng/SPARC">Code</a> · <a href="https://doi.org/10.5281/zenodo.24201692">Zenodo</a> · Apache-2.0</span>
+  </footer>
+</div>
+<script>
+/* ---------- SPARC toy engine: real computation on a one-dimensional example ---------- */
+function makeRng(seed){let a=seed>>>0;return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function gauss(r){let u=0;while(u===0)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r());}
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+function median(a){const b=[...a].sort((x,y)=>x-y),n=b.length;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2;}
+function madScale(a){const m=median(a);return 1.4826*median(a.map(v=>Math.abs(v-m)));}
+
+const NOISE=0.035;
+const truth=x=>0.2+0.8*x-3*Math.pow(Math.max(0,x-0.6),2)+0.05*Math.sin(15*x);
+const G=201, GRID=Array.from({length:G},(_,i)=>i/(G-1));
+const MODELS=[
+  {id:'lin',name:'Linear',family:'additive',cls:'m1'},
+  {id:'tree',name:'Tree',family:'tree-based',cls:'m2'},
+  {id:'gp',name:'Smooth',family:'locally smooth',cls:'m3'},
+  {id:'mono',name:'Monotonic',family:'monotonic',cls:'m4'}
+];
+const M=MODELS.length;
+
+/* --- four one-dimensional model families --- */
+function fitLin(X,Y){const mx=mean(X),my=mean(Y);let sxx=1e-4,sxy=0;for(let i=0;i<X.length;i++){sxx+=(X[i]-mx)**2;sxy+=(X[i]-mx)*(Y[i]-my);}const b=sxy/sxx;return x=>my+b*(x-mx);}
+function fitTree(X,Y,depth=3,minLeaf=3){
+  const idx=X.map((_,i)=>i).sort((a,b)=>X[a]-X[b]),xs=idx.map(i=>X[i]),ys=idx.map(i=>Y[i]);
+  function build(lo,hi,d){
+    const n=hi-lo;let s=0;for(let i=lo;i<hi;i++)s+=ys[i];const m=s/n;
+    if(d===0||n<2*minLeaf)return{v:m};
+    let best=null,ls=0;for(let i=lo;i<lo+minLeaf-1;i++)ls+=ys[i];
+    for(let k=lo+minLeaf;k<=hi-minLeaf;k++){ls+=ys[k-1];if(xs[k-1]>=xs[k])continue;
+      const nl=k-lo,nr=hi-k,rs=s-ls,gain=ls*ls/nl+rs*rs/nr-s*s/n;
+      if(!best||gain>best.gain)best={gain,k};}
+    if(!best||best.gain<1e-9)return{v:m};
+    return{t:(xs[best.k-1]+xs[best.k])/2,l:build(lo,best.k,d-1),r:build(best.k,hi,d-1)};
+  }
+  const root=build(0,xs.length,depth);
+  return x=>{let nd=root;while(nd.t!==undefined)nd=x<nd.t?nd.l:nd.r;return nd.v;};
+}
+function cholSolve(K,b){const n=b.length,L=K.map(r=>r.slice());
+  for(let j=0;j<n;j++){for(let k=0;k<j;k++)L[j][j]-=L[j][k]*L[j][k];L[j][j]=Math.sqrt(Math.max(L[j][j],1e-12));
+    for(let i=j+1;i<n;i++){for(let k=0;k<j;k++)L[i][j]-=L[i][k]*L[j][k];L[i][j]/=L[j][j];}}
+  const z=new Array(n);for(let i=0;i<n;i++){let s=b[i];for(let k=0;k<i;k++)s-=L[i][k]*z[k];z[i]=s/L[i][i];}
+  const a=new Array(n);for(let i=n-1;i>=0;i--){let s=z[i];for(let k=i+1;k<n;k++)s-=L[k][i]*a[k];a[i]=s/L[i][i];}
+  return a;}
+function fitGP(X,Y,ell=0.12){const n=X.length,m=mean(Y);let sv=0;for(const y of Y)sv+=(y-m)**2;sv=Math.max(sv/n,1e-4);
+  const k=(a,b)=>sv*Math.exp(-0.5*((a-b)/ell)**2);
+  const K=X.map((xi,i)=>X.map((xj,j)=>k(xi,xj)+(i===j?NOISE*NOISE+1e-8:0)));
+  const al=cholSolve(K,Y.map(y=>y-m));
+  return x=>{let s=m;for(let j=0;j<n;j++)s+=al[j]*k(x,X[j]);return s;};}
+function fitMono(X,Y){const n=X.length,idx=X.map((_,i)=>i).sort((a,b)=>X[a]-X[b]);
+  const mx=mean(X),my=mean(Y);let c=0;for(let i=0;i<n;i++)c+=(X[i]-mx)*(Y[i]-my);const dir=c>=0?1:-1;
+  const xs=idx.map(i=>X[i]),blocks=[];
+  for(const i of idx){blocks.push({s:dir*Y[i],w:1});
+    while(blocks.length>1&&blocks[blocks.length-2].s/blocks[blocks.length-2].w>blocks[blocks.length-1].s/blocks[blocks.length-1].w){
+      const b=blocks.pop(),a=blocks[blocks.length-1];a.s+=b.s;a.w+=b.w;}}
+  const fs=[];for(const b of blocks)for(let j=0;j<b.w;j++)fs.push(b.s/b.w);
+  return x=>{if(x<=xs[0])return dir*fs[0];if(x>=xs[n-1])return dir*fs[n-1];
+    let lo=0,hi=n-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(xs[mid]<=x)lo=mid;else hi=mid;}
+    const t=(x-xs[lo])/(xs[hi]-xs[lo]||1);return dir*(fs[lo]+t*(fs[hi]-fs[lo]));};}
+const FITTERS=[fitLin,fitTree,fitGP,fitMono];
+const fitAll=(X,Y)=>FITTERS.map(f=>f(X,Y));
+
+/* --- move 2: leave-one-out evidence matrix --- */
+function looMatrix(X,Y){const n=X.length,P=[];
+  for(let i=0;i<n;i++){const Xi=X.filter((_,j)=>j!==i),Yi=Y.filter((_,j)=>j!==i);P.push(fitAll(Xi,Yi).map(f=>f(X[i])));}
+  return P;}
+
+/* --- move 3: stability screening with a non-negative lasso --- */
+function nnLasso(P,y,alpha=0.01){const n=y.length,k=P[0].length,s=madScale(y)||1,ys=y.map(v=>v/s),Ps=P.map(r=>r.map(v=>v/s));
+  const beta=new Array(k).fill(0);let b0=0;
+  for(let it=0;it<200;it++){let r0=0;for(let i=0;i<n;i++){let p=0;for(let j=0;j<k;j++)p+=Ps[i][j]*beta[j];r0+=ys[i]-p;}b0=r0/n;
+    for(let j=0;j<k;j++){let num=0,den=1e-12;for(let i=0;i<n;i++){let p=b0;for(let l=0;l<k;l++)if(l!==j)p+=Ps[i][l]*beta[l];num+=Ps[i][j]*(ys[i]-p);den+=Ps[i][j]*Ps[i][j];}
+      beta[j]=Math.max(0,(num/n-alpha)/(den/n));}}
+  return beta;}
+function screen(X,Y,seed,B=50,frac=0.8,thr=0.6){const n=X.length,r=makeRng(seed),count=new Array(M).fill(0),subs=[],running=[];
+  const m=Math.max(6,Math.round(frac*n));
+  for(let b=0;b<B;b++){const idx=X.map((_,i)=>i);for(let i=n-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+    const sub=idx.slice(0,m),Xs=sub.map(i=>X[i]),Ys=sub.map(i=>Y[i]),beta=nnLasso(looMatrix(Xs,Ys),Ys),sel=beta.map(v=>v>1e-5);
+    sel.forEach((v,j)=>{if(v)count[j]++;});subs.push({sub,sel});running.push(count.map(c=>c/(b+1)));}
+  const freq=count.map(c=>c/B);let active=freq.map(f=>f>=thr);
+  if(!active.some(Boolean)){const order=freq.map((f,j)=>[f,j]).sort((a,b)=>b[0]-a[0]);active=freq.map(()=>false);order.slice(0,2).forEach(o=>active[o[1]]=true);}
+  return{freq,active,subs,running,thr};}
+
+/* --- move 4: posterior over simplex weights (Metropolis sampler on the paper's prior) --- */
+function sampleWeights(P,y,active,seed){const act=active.map((a,j)=>a?j:-1).filter(j=>j>=0),k=act.length,n=y.length;
+  if(k===1){const w=new Array(M).fill(0);w[act[0]]=1;return{draws:[w],wbar:w};}
+  const s=madScale(y)||1,ys=y.map(v=>v/s),Ps=P.map(r=>act.map(j=>r[j]/s)),r=makeRng(seed);
+  const d=2*k+1,th=new Array(d).fill(0);for(let j=0;j<k;j++)th[j]=1;
+  const logpost=t=>{let lp=0,sa=0;const rho=Math.exp(t[2*k]);
+    for(let j=0;j<k;j++){const sj=Math.exp(t[k+j]);lp+=-0.5*t[j]*t[j]/(sj*sj)-t[2*k]-Math.log(1+(sj/rho)**2);sa+=Math.abs(t[j]);}
+    lp+=-Math.log(1+rho*rho)+t[2*k];if(sa<1e-12)return-Infinity;
+    let rss=0;for(let i=0;i<n;i++){let p=0;for(let j=0;j<k;j++)p+=Ps[i][j]*Math.abs(t[j])/sa;rss+=(ys[i]-p)**2;}
+    return lp-(1+n/2)*Math.log(1+rss/2);};
+  const step=new Array(d).fill(0.6),acc=new Array(d).fill(0);let cur=logpost(th);const draws=[];
+  const SWEEPS=2600,BURN=800,THIN=6;
+  for(let it=0;it<SWEEPS;it++){
+    for(let c=0;c<d;c++){const old=th[c];th[c]=old+step[c]*gauss(r);const nw=logpost(th);
+      if(Math.log(r())<nw-cur){cur=nw;acc[c]++;}else th[c]=old;}
+    if(it<BURN&&(it+1)%50===0)for(let c=0;c<d;c++){step[c]*=Math.exp(acc[c]/50-0.35);acc[c]=0;}
+    if(it>=BURN&&(it-BURN)%THIN===0){let sa=0;for(let j=0;j<k;j++)sa+=Math.abs(th[j]);const w=new Array(M).fill(0);act.forEach((j,q)=>w[j]=Math.abs(th[q])/sa);draws.push(w);}}
+  const wbar=new Array(M).fill(0);draws.forEach(w=>w.forEach((v,j)=>wbar[j]+=v/draws.length));
+  return{draws,wbar};}
+
+/* --- moves 5 and 6: composition, dispersion, trust, acquisition --- */
+function trustAt(u,ures,q){return 1/(1+Math.sqrt(u*u+ures*ures)/q);}
+function decide(w,q,beta){const trust=w.uep.map(u=>trustAt(u,w.ures,q)),acq=w.mu.map((m,g)=>m+beta*w.uep[g]*trust[g]);
+  let next=-1;for(let g=0;g<G;g++){if(w.X.some(x=>Math.abs(x-GRID[g])<0.015))continue;if(next<0||acq[g]>acq[next])next=g;}
+  return{trust,acq,next};}
+function compute(X,Y,seed=7){const fits=fitAll(X,Y),P=looMatrix(X,Y),sc=screen(X,Y,seed+11),post=sampleWeights(P,Y,sc.active,seed+29);
+  const F=fits.map(f=>GRID.map(f)),mu=GRID.map((_,g)=>{let s=0;for(let j=0;j<M;j++)s+=post.wbar[j]*F[j][g];return s;});
+  const uep=GRID.map((_,g)=>{let s=0,s2=0;for(const w of post.draws){let p=0;for(let j=0;j<M;j++)p+=w[j]*F[j][g];s+=p;s2+=p*p;}const n=post.draws.length,m=s/n;return Math.sqrt(Math.max(0,s2/n-m*m));});
+  const res=Y.map((y,i)=>{let p=0;for(let j=0;j<M;j++)p+=post.wbar[j]*P[i][j];return y-p;}),ures=madScale(res);
+  return{X:X.slice(),Y:Y.slice(),fits,F,P,screen:sc,draws:post.draws,wbar:post.wbar,mu,uep,ures,res,q0:madScale(Y)};}
+
+/* --- verification: four independent diagnostics --- */
+function isolationScores(X,seed,T=100){const n=X.length,psi=Math.min(16,n),r=makeRng(seed),c=p=>p<=1?0:2*(Math.log(p-1)+0.5772156649)-2*(p-1)/p,depth=new Array(n).fill(0);
+  for(let t=0;t<T;t++){const idx=X.map((_,i)=>i);for(let i=n-1;i>0;i--){const j=Math.floor(r()*(i+1));[idx[i],idx[j]]=[idx[j],idx[i]];}
+    const sub=idx.slice(0,psi).map(i=>X[i]),lim=Math.ceil(Math.log2(psi));
+    const build=(pts,d)=>{if(pts.length<=1||d>=lim)return{n:pts.length};const lo=Math.min(...pts),hi=Math.max(...pts);if(hi-lo<1e-12)return{n:pts.length};
+      const s=lo+r()*(hi-lo);return{s,l:build(pts.filter(p=>p<s),d+1),r:build(pts.filter(p=>p>=s),d+1)};};
+    const root=build(sub,0);
+    for(let i=0;i<n;i++){let nd=root,d=0;while(nd.s!==undefined){nd=X[i]<nd.s?nd.l:nd.r;d++;}depth[i]+=d+c(nd.n);}}
+  return depth.map(d=>Math.pow(2,-(d/T)/c(psi)));}
+function topFlags(score,frac=0.1){const n=score.length,k=Math.max(1,Math.round(frac*n)),order=score.map((s,i)=>[s,i]).sort((a,b)=>b[0]-a[0]),f=new Array(n).fill(false);order.slice(0,k).forEach(o=>f[o[1]]=true);return f;}
+function diagnose(w,seed=5){const n=w.X.length,abs=w.res.map(Math.abs);
+  const pval=abs.map((s,i)=>(abs.filter((t,j)=>j!==i&&t>=s).length+1)/n),f1=pval.map(p=>p<0.10);
+  const full=fitLin(w.X,w.Y),infl=w.X.map((x,i)=>{const Xi=w.X.filter((_,j)=>j!==i),Yi=w.Y.filter((_,j)=>j!==i);return Math.abs(full(x)-fitLin(Xi,Yi)(x));}),f2=topFlags(infl);
+  const f3=topFlags(isolationScores(w.X,seed));
+  const mx=mean(w.X),vx=mean(w.X.map(x=>(x-mx)**2))||1e-9,f4=w.X.map(x=>(x-mx)**2/vx>3.841);
+  return w.X.map((_,i)=>{const flags=[f1[i],f2[i],f3[i],f4[i]];return{i,flags,count:flags.filter(Boolean).length,pval:pval[i],infl:infl[i]};});}
+
+function initialData(seed=5){const r=makeRng(seed),X=[];while(X.length<20){const x=0.03+0.55*r();if(X.every(v=>Math.abs(v-x)>0.012))X.push(x);}
+  X.sort((a,b)=>a-b);return{X,Y:X.map(x=>truth(x)+NOISE*gauss(r))};}
+
+/* ---------- results, replayed from the manuscript ---------- */
+const easeIO=t=>t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const seg=(t,a,b)=>easeIO(Math.max(0,Math.min(1,(t-a)/(b-a))));
+function tween(ms,draw,done){const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduce){draw(1);if(done)done();return;}
+  const t0=performance.now();(function f(now){const t=Math.min(1,(now-t0)/ms);draw(t);if(t<1)requestAnimationFrame(f);else if(done)done();})(t0);}
+const R={};
+function exhibit(id,ms,draw){const q=s=>document.querySelector(s);R[id]={draw,ms};draw(1);
+  const b=q('#'+id+'play');if(b)b.addEventListener('click',()=>tween(ms,draw));}
+const n1=v=>v.toFixed(1);
+
+/* 01: prospective campaign. Values read from Supplementary Fig. 6 (predicted, measured), mV */
+const CAMP=[[249,242],[250,272],[258,295],[297,279],[309,254],[309,303],[310,265],[312,304],[313,268],[317,282],[324,308]];
+function drawR1(t){const x0=74,x1=604,yT=58,yB=268,vmin=232,vmax=332,y=v=>yT+(vmax-v)/(vmax-vmin)*(yB-yT),x=i=>x0+20+i*(x1-x0-40)/(CAMP.length-1);
+  let s='',hits=0;
+  for(const v of [240,260,280,300,320])s+=`<line class="gridl" x1="${x0}" x2="${x1}" y1="${n1(y(v))}" y2="${n1(y(v))}"/><text x="${x0-8}" y="${n1(y(v)+4)}" text-anchor="end">${v}</text>`;
+  s+=`<rect class="good" opacity="0.07" x="${x0}" y="${n1(y(300))}" width="${x1-x0}" height="${n1(yB-y(300))}"/><line class="goods dash" stroke-width="1.4" x1="${x0}" x2="${x1}" y1="${n1(y(300))}" y2="${n1(y(300))}"/><text class="inkt" x="${x1-6}" y="${n1(yB-8)}" text-anchor="end">shaded: below 300 mV</text>`;
+  s+=`<text class="axl" transform="translate(16 ${(yT+yB)/2}) rotate(-90)" text-anchor="middle">overpotential (mV)</text><text class="axl" x="${(x0+x1)/2}" y="${yB+20}" text-anchor="middle">11 recommended conditions, ordered by prediction</text>`;
+  CAMP.forEach((c,i)=>{const a=seg(t,0.02+i*0.02,0.14+i*0.02),m=seg(t,0.3+i*0.035,0.55+i*0.035),cur=c[0]+(c[1]-c[0])*m,ok=c[1]<300;if(m>=1&&ok)hits++;
+    if(a>0)s+=`<circle class="hol" opacity="${a.toFixed(2)}" cx="${n1(x(i))}" cy="${n1(y(c[0]))}" r="6"/>`;
+    if(m>0){s+=`<line class="${ok?'goods':'muts'}" x1="${n1(x(i))}" x2="${n1(x(i))}" y1="${n1(y(c[0]))}" y2="${n1(y(cur))}"/><circle class="${ok?'good':'mut'}" cx="${n1(x(i))}" cy="${n1(y(cur))}" r="6.5"/>`;
+      if(m>=1&&c[1]===242)s+=`<text class="inkt" x="${n1(x(i)+11)}" y="${n1(y(cur)+4)}">best, 242 mV</text>`;}});
+  s+=`<text class="big" x="${x0}" y="34">${hits} of 11</text><text class="inkt" x="${x0+112}" y="26">below 300 mV</text><text x="${x0+112}" y="40">hollow: predicted · filled: measured</text>`;
+  const uy=318,uw=x1-x0,k=seg(t,0.8,1),lit=Math.round(18*k);
+  s+=`<text class="inkt" x="${x0}" y="${uy-8}">Initial record: ${lit} of 125 below 300 mV (14.4%)</text>`;
+  for(let i=0;i<125;i++)s+=`<rect class="${i<lit?'good':'cellu'}" x="${n1(x0+i*uw/125)}" y="${uy}" width="${n1(uw/125-1)}" height="14"/>`;
+  s+=`<text class="inkt" x="${x0}" y="${uy+42}">Recommended: ${hits} of 11 below 300 mV${hits===8?' (72.7%)':''}</text>`;
+  for(let i=0;i<11;i++)s+=`<rect class="${i<hits?'good':'cellu'}" x="${n1(x0+i*uw/11)}" y="${uy+50}" width="${n1(uw/11-2)}" height="14"/>`;
+  document.querySelector('#r1').innerHTML=s;
+  document.querySelector('#r1read').innerHTML=t>=1?'Mean absolute prediction error <b>26.7 mV</b>':'';}
+
+/* 02: verification. Values read from Fig. 5f, mV */
+const REP={pri:[165,136,132,36,34,14,12],ctl:[42,37,37,33,32,14,10,9]};
+function drawR2(t){const x0=118,x1=612,x=v=>x0+v/180*(x1-x0),rows=[['Flagged (7)',REP.pri,78,'sigf'],['Controls (8)',REP.ctl,158,'good']];
+  let s=`<rect class="unseen" style="opacity:.08" x="${n1(x(130))}" y="30" width="${n1(x1-x(130))}" height="170"/><text class="sigt" x="${x1-4}" y="194" text-anchor="end">above 130 mV</text>`;
+  for(const v of [0,40,80,120,160])s+=`<line class="gridl" x1="${n1(x(v))}" x2="${n1(x(v))}" y1="30" y2="200"/><text x="${n1(x(v))}" y="216" text-anchor="middle">${v}</text>`;
+  s+=`<line class="goods dash" stroke-width="1.4" x1="${n1(x(42))}" x2="${n1(x(42))}" y1="118" y2="200"/><text x="${n1(x(42)+6)}" y="196">every control below 42 mV</text>`;
+  s+=`<text class="axl" x="${(x0+x1)/2}" y="238" text-anchor="middle">|repeat − original| (mV)</text>`;
+  rows.forEach(([name,vals,y,cls],r)=>{s+=`<text class="inkt" x="10" y="${y+4}">${name}</text><line class="lane" x1="${x0}" x2="${x1}" y1="${y}" y2="${y}"/>`;
+    const seen=[];vals.forEach((v,i)=>{const m=seg(t,0.05+r*0.3+i*0.03,0.45+r*0.3+i*0.03),near=seen.filter(u=>Math.abs(u-v)<5).length;seen.push(v);
+      const cy=y+(near%2?-1:1)*Math.ceil(near/2)*13;
+      s+=`<circle class="${cls}" stroke="var(--paper)" stroke-width="1.5" cx="${n1(x(v*m))}" cy="${cy}" r="6.5"/>`;
+      if(m>=1&&v>130)s+=`<text class="inkt" x="${n1(x(v))}" y="${cy<y?cy-12:cy+21}" text-anchor="middle">${v}</text>`;});});
+  document.querySelector('#r2').innerHTML=s;
+  document.querySelector('#r2read').innerHTML=t>=1?'Mean <b>76</b> vs <b>27 mV</b> · median <b>36.3</b> vs <b>32.5 mV</b>':'';}
+
+/* 03: eight published datasets: [name, SPARC, reported] */
+const BENCH=[['Formate oxidation',0.919,0.920],['Organic laser emitters',0.580,0.530],['Inorganic synthesis',0.820,0.880],['OER activity',0.927,0.835],['Photovoltaics',0.537,0.416],['Polymer HER',0.704,0.680],['OER stability',0.724,0.410],['Battery performance',0.927,0.860]];
+function drawR3(t){const x0=186,x1=496,x=v=>x0+v*(x1-x0);let s='',up=0;
+  for(const v of [0,0.25,0.5,0.75,1])s+=`<line class="gridl" x1="${n1(x(v))}" x2="${n1(x(v))}" y1="14" y2="296"/><text x="${n1(x(v))}" y="312" text-anchor="middle">${v}</text>`;
+  s+=`<text class="axl" x="${(x0+x1)/2}" y="327" text-anchor="middle">predictive R²</text>`;
+  BENCH.forEach(([name,sp,rep],i)=>{const y=32+i*35,m=seg(t,0.08+i*0.07,0.5+i*0.07),cur=rep+(sp-rep)*m,hi=sp>rep;if(m>=1&&hi)up++;
+    s+=`<text class="inkt" x="8" y="${y+4}">${name}</text><line class="${hi?'goods':'muts'}" stroke-width="3" x1="${n1(x(rep))}" x2="${n1(x(cur))}" y1="${y}" y2="${y}"/><circle class="hol" cx="${n1(x(rep))}" cy="${y}" r="5.5"/><circle class="${hi?'good':'mut'}" cx="${n1(x(cur))}" cy="${y}" r="6.5"/>`;
+    if(m>=1)s+=`<text x="${x1+12}" y="${y+4}">${rep.toFixed(3)} → <tspan class="inkt">${sp.toFixed(3)}</tspan></text>`;});
+  document.querySelector('#r3').innerHTML=s;
+  document.querySelector('#r3read').innerHTML=t>=1?`Higher than the reported value on <b>${up} of 8</b>`:'';}
+
+/* 04: ablation switchboard */
+const ABL_COLS=['Formate','Laser','Synthesis','OER act.','PV','Polymer','OER stab.','Battery'];
+const ABL=[['No sparse selection',[-20,-17,-7.5,-10,-6,-0.8,-1.3,-0.2]],['No non-negativity',[-20,-18,-3,-4,-5,-0.6,-2.6,-5.6]],['No stability screening',[-19,-7.3,0,-6,-33,-24.5,-20,-22]],['Non-nested k-fold',[-4.8,-17.1,-19.5,-8,-11,-32.7,-13,-4.1]],['Best single model',[-27,-23.4,-23.6,-36,-21,-40.5,-5,-18]]];
+const r4={k:4,cur:ABL[4][1].slice()};
+function drawR4(vals){const x0=52,cw=72,y0=36,y1=270,y=v=>y0+(-v)/45*(y1-y0);let s='';
+  for(const v of [0,-15,-30,-45])s+=`<line class="gridl" x1="${x0-8}" x2="${x0+8*cw-10}" y1="${n1(y(v))}" y2="${n1(y(v))}"/><text x="${x0-12}" y="${n1(y(v)+4)}" text-anchor="end">${v===0?'0':'−'+(-v)}%</text>`;
+  s+=`<line class="axis" x1="${x0-8}" x2="${x0+8*cw-10}" y1="${y0}" y2="${y0}"/>`;
+  ABL_COLS.forEach((c,i)=>{const v=vals[i],h=Math.max(1.5,y(v)-y0);
+    s+=`<rect class="f1" x="${x0+i*cw}" y="${y0}" width="${cw-18}" height="${n1(h)}" rx="2"/><text class="inkt" x="${x0+i*cw+(cw-18)/2}" y="${n1(y0+h+15)}" text-anchor="middle">${Math.abs(v)<0.05?'0':'−'+Math.abs(v).toFixed(1).replace(/\.0$/,'')}</text><text x="${x0+i*cw+(cw-18)/2}" y="${y1+34}" text-anchor="middle">${c}</text>`;});
+  document.querySelector('#r4').innerHTML=s;}
+function setR4(k){const from=r4.cur.slice(),to=ABL[k][1];r4.k=k;
+  document.querySelectorAll('#r4chips .chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===k));
+  const lost=to.filter(v=>v<0).length,worst=Math.min(...to);
+  document.querySelector('#r4read').innerHTML=`<b>${ABL[k][0]}</b>: R² lower on <b>${lost} of 8</b> datasets, by up to <b>${Math.abs(worst)}%</b>`;
+  tween(600,t=>{const e=easeIO(t);r4.cur=from.map((f,i)=>f+(to[i]-f)*e);drawR4(r4.cur);},()=>{r4.cur=to.slice();drawR4(r4.cur);});}
+function initR4(){const box=document.querySelector('#r4chips');
+  box.innerHTML=ABL.map((a,i)=>`<button class="chip pick" type="button" data-k="${i}" aria-pressed="${i===r4.k}">${a[0]}</button>`).join('');
+  box.addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)setR4(+b.dataset.k);});drawR4(r4.cur);setR4(r4.k);}
+function tourR4(){let k=0;const step=()=>{setR4(k);k++;if(k<ABL.length)setTimeout(step,1300);};step();}
+
+/* 05: extra information: [label, R2, kind] against the SPARC baseline */
+const MORE=[['OER stability',0.724,[['+ ROOST',0.645,'f1'],['+ CrabNet',0.618,'f1'],['+ Mat2Vec',0.597,'f1'],['GPT-5.2 selector',0.750,'f3']]],['Polymer HER',0.704,[['+ ChemBERTa',0.509,'f1'],['+ Mat2Vec',0.489,'f1'],['+ GCN',0.443,'f1'],['GPT-5.2 selector',0.684,'f3']]]];
+function drawR5(t){const x0=150,x1=486,x=v=>x0+v/0.8*(x1-x0);let s='';
+  for(const v of [0,0.2,0.4,0.6,0.8])s+=`<line class="gridl" x1="${n1(x(v))}" x2="${n1(x(v))}" y1="10" y2="296"/><text x="${n1(x(v))}" y="312" text-anchor="middle">${v}</text>`;
+  s+=`<text class="axl" x="${(x0+x1)/2}" y="327" text-anchor="middle">leave-one-out R²</text>`;
+  MORE.forEach(([name,base,items],g)=>{const top=22+g*146;
+    s+=`<text class="inkt" x="8" y="${top}" style="font-weight:500">${name}</text><line class="axis" stroke-width="2" x1="${n1(x(base))}" x2="${n1(x(base))}" y1="${top+8}" y2="${top+122}"/><text class="inkt" x="${n1(x(base)+6)}" y="${top}">SPARC ${base.toFixed(3)}</text>`;
+    items.forEach(([lab,v,cls],i)=>{const y=top+28+i*28,m=seg(t,0.08+(g*4+i)*0.07,0.45+(g*4+i)*0.07),cur=base+(v-base)*m,pct=100*(v-base)/base;
+      s+=`<text x="8" y="${y+4}">${lab}</text><line stroke="var(--${cls==='f1'?'m1':'m3'})" stroke-width="3" x1="${n1(x(base))}" x2="${n1(x(cur))}" y1="${y}" y2="${y}"/><circle class="${cls}" cx="${n1(x(cur))}" cy="${y}" r="6"/>`;
+      if(m>=1)s+=`<text x="${x1+12}" y="${y+4}"><tspan class="inkt">${v.toFixed(3)}</tspan> (${pct>0?'+':'−'}${Math.abs(pct).toFixed(1)}%)</text>`;});});
+  document.querySelector('#r5').innerHTML=s;
+  document.querySelector('#r5read').innerHTML=t>=1?'Pretrained representations: <b>lower in 6 of 6</b> · selector: <b>+3.6%</b> and <b>−2.8%</b>':'';}
+
+/* 06: finite-pool search race: [task, init, [name, evaluations]] */
+const RACE=[['Ru dissolution',20,[['SPARC',66],['GP',113],['RF',126]]],['Polymer HER',10,[['SPARC',16],['GP',39],['RF',76]]]];
+function drawR6(t){const x0=120,x1=600,x=v=>x0+v/130*(x1-x0),ev=Math.round(130*Math.min(1,t/0.92));let s='';
+  for(const v of [0,25,50,75,100,125])s+=`<line class="gridl" x1="${n1(x(v))}" x2="${n1(x(v))}" y1="24" y2="232"/><text x="${n1(x(v))}" y="248" text-anchor="middle">${v}</text>`;
+  s+=`<text class="axl" x="${(x0+x1)/2}" y="264" text-anchor="middle">evaluations (including initialization)</text>`;
+  RACE.forEach(([task,init,runs],g)=>{const top=40+g*104;
+    s+=`<text class="inkt" x="8" y="${top-6}" style="font-weight:500">${task}</text><rect class="cellu" x="${x0}" y="${top+2}" width="${n1(x(init)-x0)}" height="72"/><text x="${n1(x(init)+4)}" y="${top-6}">shared start: ${init}</text>`;
+    runs.forEach(([nm,stop],i)=>{const y=top+14+i*24,cur=Math.max(init,Math.min(stop,ev)),done=ev>=stop,sp=i===0;
+      s+=`<text ${sp?'class="inkt"':''} x="${x0-10}" y="${y+4}" text-anchor="end">${nm}</text><line class="lane" x1="${x0}" x2="${x1}" y1="${y}" y2="${y}"/><line stroke="var(--${sp?'ink':'muted'})" stroke-width="6" stroke-linecap="round" x1="${x0}" x2="${n1(x(cur))}" y1="${y}" y2="${y}"/><circle class="${sp?'sigf':'mut'}" cx="${n1(x(cur))}" cy="${y}" r="7"/>`;
+      if(done)s+=`<text class="inkt" x="${n1(x(stop)+12)}" y="${y+4}">${stop}</text>`;});});
+  document.querySelector('#r6').innerHTML=s;
+  document.querySelector('#r6read').innerHTML=t>=1?'Ru dissolution <b>66</b> vs 113 and 126 · polymer HER <b>16</b> vs 39 and 76':`Evaluation <b>${ev}</b>`;}
+
+/* 07: first extrapolation batch: [task, batch size, top-quartile count, percent] */
+const EXT=[['Formate oxidation',23,8,35],['OER activity',14,6,43]];
+function drawR7(t){let s='';
+  EXT.forEach(([task,n,hit,pct],g)=>{const y=52+g*84,lit=Math.round(hit*seg(t,0.1+g*0.35,0.55+g*0.35));
+    s+=`<text class="inkt" x="8" y="${y-22}" style="font-weight:500">${task}</text><text x="150" y="${y-22}">first batch of ${n} candidates</text>`;
+    for(let i=0;i<n;i++)s+=`<circle class="${i<lit?'good':'cellu'}" cx="${18+i*21}" cy="${y}" r="8"/>`;
+    const ex=18+0.25*n*21-10.5;s+=`<line class="sig dash" stroke-width="1.4" x1="${n1(ex)}" x2="${n1(ex)}" y1="${y-14}" y2="${y+14}"/><text class="sigt" x="${n1(ex+5)}" y="${y+28}">25% expected at random</text>`;
+    if(lit>=hit)s+=`<text class="inkt" x="${18+n*21+2}" y="${y+4}">${hit} of ${n} · ${pct}%</text>`;});
+  document.querySelector('#r7').innerHTML=s;
+  document.querySelector('#r7read').innerHTML='';}
+
+function initResults(){exhibit('r1',3600,drawR1);exhibit('r2',3000,drawR2);exhibit('r3',2800,drawR3);initR4();exhibit('r5',2800,drawR5);exhibit('r6',5200,drawR6);exhibit('r7',2400,drawR7);
+  if(typeof onceVisible==='function'){for(const id of ['r1','r2','r3','r5','r6','r7'])onceVisible(document.querySelector('#'+id),()=>tween(R[id].ms,R[id].draw));onceVisible(document.querySelector('#r4'),tourR4);}}
+
+/* ---------- rendering ---------- */
+const $=s=>document.querySelector(s);
+const W=640,H=340,ML=46,MR=14,MT=14,MB=36,YMAX=1.15;
+const sx=x=>ML+x*(W-ML-MR);
+const sy=y=>H-MB-(Math.max(-0.03,Math.min(YMAX,y))/YMAX)*(H-MT-MB);
+const f1d=v=>v.toFixed(1),f2d=v=>v.toFixed(2),f3d=v=>v.toFixed(3);
+const REDUCED=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function frame(){let s='';
+  for(const y of [0,0.25,0.5,0.75,1])s+=`<line class="gridl" x1="${ML}" x2="${W-MR}" y1="${f1d(sy(y))}" y2="${f1d(sy(y))}"/><text x="${ML-7}" y="${f1d(sy(y)+4)}" text-anchor="end">${y}</text>`;
+  for(const x of [0,0.25,0.5,0.75,1])s+=`<line class="gridl" x1="${f1d(sx(x))}" x2="${f1d(sx(x))}" y1="${MT}" y2="${H-MB}"/><text x="${f1d(sx(x))}" y="${H-MB+15}" text-anchor="middle">${x}</text>`;
+  s+=`<line class="axis" x1="${ML}" x2="${W-MR}" y1="${H-MB}" y2="${H-MB}"/>`;
+  s+=`<text class="axl" x="${(ML+W-MR)/2}" y="${H-5}" text-anchor="middle">design variable</text>`;
+  s+=`<text class="axl" transform="translate(12 ${(MT+H-MB)/2}) rotate(-90)" text-anchor="middle">response</text>`;
+  return s;}
+const dOf=vals=>'M'+vals.map((v,g)=>f1d(sx(GRID[g]))+','+f1d(sy(v))).join('L');
+const path=(vals,cls,norm,attr='')=>`<path class="${cls}"${norm?' pathLength="1"':''} ${attr} d="${dOf(vals)}"/>`;
+function band(mu,u,k=2){const up=mu.map((m,g)=>f1d(sx(GRID[g]))+','+f1d(sy(m+k*u[g]))),dn=mu.map((m,g)=>f1d(sx(GRID[g]))+','+f1d(sy(m-k*u[g]))).reverse();return`<polygon class="bandf" points="${up.concat(dn).join(' ')}"/>`;}
+function pts(X,Y,clsOf){return X.map((x,i)=>`<circle class="pt ${clsOf?clsOf(i):''}" cx="${f1d(sx(x))}" cy="${f1d(sy(Y[i]))}" r="4.3"/>`).join('');}
+function unseen(w){const x0=Math.max(...w.X)+0.015;if(x0>0.97)return'';return`<rect class="unseen" x="${f1d(sx(x0))}" y="${MT}" width="${f1d(sx(1)-sx(x0))}" height="${H-MB-MT}"/><text class="sigt" x="${f1d(sx(1)-6)}" y="${MT+14}" text-anchor="end">no measurements here yet</text>`;}
+function nextMark(x,y,label){const right=x>0.62;return`<line class="sig dash" x1="${f1d(sx(x))}" x2="${f1d(sx(x))}" y1="${MT}" y2="${H-MB}"/><circle class="sigf" cx="${f1d(sx(x))}" cy="${f1d(sy(y))}" r="5.5"/><text class="sigt" x="${f1d(sx(x)+(right?-9:9))}" y="${MT+30}" text-anchor="${right?'end':'start'}">${label}</text>`;}
+
+/* ---------- shared state ---------- */
+const D0=initialData(),S0=compute(D0.X,D0.Y),N0=D0.X.length;
+const ui={q:Math.round(S0.q0*100)/100,beta:1.96};
+function spaghetti(w,k=40){const step=Math.max(1,Math.floor(w.draws.length/k)),out=[];for(let d=0;d<w.draws.length&&out.length<k;d+=step){const dw=w.draws[d];out.push(GRID.map((_,g)=>{let p=0;for(let j=0;j<M;j++)p+=dw[j]*w.F[j][g];return p;}));}return out;}
+
+/* weight bars (HTML, with transitions) */
+function bars(el,w){if(!el.dataset.built){el.innerHTML=MODELS.map((m,j)=>`<div class="wbar" data-j="${j}"><span class="nm">${m.name}</span><span class="track"><span class="fill" style="display:block;background:var(--${m.cls})"></span></span><span class="val">0.00</span></div>`).join('');el.dataset.built='1';}
+  el.querySelectorAll('.wbar').forEach(row=>{const j=+row.dataset.j;row.classList.toggle('off',!w.screen.active[j]);row.querySelector('.fill').style.width=(100*w.wbar[j]).toFixed(1)+'%';row.querySelector('.val').textContent=f2d(w.wbar[j]);});}
+
+/* loop chart, used by the hero and the live lab */
+function loopChart(svg,w,opts={}){const dec=decide(w,ui.q,ui.beta),n=w.X.length;let s=frame();
+  if(opts.truth)s+=path(GRID.map(truth),'truth');
+  MODELS.forEach((m,j)=>{if(w.screen.active[j])s+=path(w.F[j],'curve '+m.cls,false,`stroke-opacity="${(0.25+0.6*w.wbar[j]).toFixed(2)}" stroke-width="1.5"`);});
+  s+=band(w.mu,w.uep)+path(w.mu,'mu')+pts(w.X,w.Y,i=>i>=N0?(i===n-1&&opts.pop?'new pop':'new'):'');
+  if(dec.next>=0)s+=nextMark(GRID[dec.next],dec.acq[dec.next],'next experiment');
+  svg.innerHTML=s;return dec;}
+
+/* ---------- move 01 ---------- */
+function drawF1(){const w=S0;$('#f1').innerHTML=frame()+unseen(w)+MODELS.map((m,j)=>path(w.F[j],'curve '+m.cls,true)).join('')+pts(w.X,w.Y);}
+function initF1(){drawF1();const box=$('#f1chips');
+  box.innerHTML=MODELS.map(m=>`<button class="chip" type="button" aria-pressed="true" data-c="${m.cls}"><i style="background:var(--${m.cls})"></i>${m.name} <span style="color:var(--muted)">· ${m.family}</span></button>`).join('');
+  box.addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;const on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on);$('#f1').classList.toggle('hide-'+b.dataset.c,!on);});}
+function playF1(){const s=$('#f1');s.classList.remove('drawing');void s.getBoundingClientRect();s.classList.add('drawing');setTimeout(()=>s.classList.remove('drawing'),2400);}
+
+/* ---------- move 02: leave-one-out evidence ---------- */
+const f2={i:12,filled:N0,timer:null,cache:{}};
+function looCurves(i){if(!f2.cache[i]){const X=S0.X.filter((_,j)=>j!==i),Y=S0.Y.filter((_,j)=>j!==i);f2.cache[i]=fitAll(X,Y).map(f=>GRID.map(f));}return f2.cache[i];}
+function drawF2(){const w=S0,i=f2.i,F=looCurves(i),x=w.X[i];
+  let s=frame()+MODELS.map((m,j)=>path(F[j],'curve '+m.cls)).join('')+`<line class="sig dash" x1="${f1d(sx(x))}" x2="${f1d(sx(x))}" y1="${MT}" y2="${H-MB}"/>`+pts(w.X,w.Y,k=>k===i?'hid':'');
+  s+=MODELS.map((m,j)=>`<circle class="f${j+1}" stroke="var(--panel)" stroke-width="1.2" cx="${f1d(sx(x))}" cy="${f1d(sy(w.P[i][j]))}" r="4"/>`).join('');
+  s+=`<text class="sigt" x="${f1d(sx(x)+(x>0.62?-8:8))}" y="${MT+14}" text-anchor="${x>0.62?'end':'start'}">hidden record ${i+1}</text>`;
+  $('#f2').innerHTML=s;
+  const HS=260,top=44,ch=(HS-top-36)/N0,cw=30,x0=42;let m=`<text class="inkt" x="${x0}" y="14">evidence matrix P</text>`;
+  MODELS.forEach((md,j)=>{m+=`<rect class="f${j+1}" x="${x0+j*cw+9}" y="24" width="12" height="12" rx="2"/>`;});
+  for(let r=0;r<N0;r++){if(r%5===0||r===N0-1)m+=`<text x="${x0-6}" y="${f1d(top+r*ch+ch*0.72)}" text-anchor="end">${r+1}</text>`;
+    for(let j=0;j<M;j++){const fill=r<f2.filled,close=Math.max(0,1-Math.abs(w.P[r][j]-w.Y[r])/0.12);
+      m+=`<rect class="cell ${fill?'f'+(j+1):'empty'}" x="${x0+j*cw}" y="${f1d(top+r*ch)}" width="${cw}" height="${f1d(ch)}" ${fill?`fill-opacity="${(0.1+0.9*close).toFixed(2)}"`:''}/>`;}
+    if(r===i)m+=`<rect x="${x0-1}" y="${f1d(top+r*ch-1)}" width="${cw*M+2}" height="${f1d(ch+2)}" fill="none" class="sig"/>`;}
+  m+=`<text x="${x0}" y="${HS-18}">darker = closer to</text><text x="${x0}" y="${HS-5}">the hidden value</text>`;
+  $('#f2m').innerHTML=m;
+  $('#f2read').innerHTML=`Record ${i+1} measured <b>${f2d(w.Y[i])}</b>. Predicted without it: `+MODELS.map((md,j)=>`${md.name} <b>${f2d(w.P[i][j])}</b>`).join(' · ');}
+function stopF2(){clearInterval(f2.timer);f2.timer=null;$('#f2play').textContent='Play';}
+function playF2(){if(f2.timer){stopF2();return;}f2.i=0;f2.filled=1;drawF2();$('#f2play').textContent='Pause';
+  f2.timer=setInterval(()=>{if(f2.i>=N0-1){f2.filled=N0;stopF2();drawF2();return;}f2.i++;f2.filled=f2.i+1;drawF2();},430);}
+
+/* ---------- move 03: stability screening ---------- */
+const f3={b:49,timer:null};
+function drawF3(){const w=S0,sc=w.screen,cur=sc.subs[f3.b],inSub=new Set(cur.sub);
+  $('#f3').innerHTML=frame()+pts(w.X,w.Y,i=>inSub.has(i)?'':'dim')+`<text class="inkt" x="${ML+8}" y="${MT+14}">resample ${f3.b+1} of ${sc.subs.length}: ${cur.sub.length} of ${N0} records</text>`;
+  const x0=14,bw=162;let s=`<text class="inkt" x="${x0}" y="14">selected in % of resamples</text>`;
+  MODELS.forEach((m,j)=>{const y=44+j*52,f=sc.running[f3.b][j],done=f3.b===sc.subs.length-1;
+    s+=`<text class="inkt" x="${x0}" y="${y-6}">${m.name}</text><rect class="empty" x="${x0}" y="${y}" width="${bw}" height="12" rx="2"/><rect class="f${j+1}" x="${x0}" y="${y}" width="${f1d(bw*f)}" height="12" rx="2" ${cur.sel[j]?'':'fill-opacity="0.55"'}/>`;
+    s+=`<text x="${x0}" y="${y+28}">${Math.round(100*f)}%${done?(sc.active[j]?' · kept':' · screened out'):''}</text>`;});
+  s+=`<line class="sig dash" x1="${x0+bw*sc.thr}" x2="${x0+bw*sc.thr}" y1="26" y2="${44+3*52+18}"/><text class="sigt" x="95" y="250" text-anchor="middle">60% threshold</text>`;
+  $('#f3b').innerHTML=s;
+  const names=MODELS.filter((_,j)=>cur.sel[j]).map(m=>m.name);
+  $('#f3read').innerHTML=`Selected in this resample: <b>${names.length?names.join(', '):'none'}</b>`;}
+function playF3(){if(f3.timer){clearInterval(f3.timer);f3.timer=null;$('#f3play').textContent='Play';return;}f3.b=0;drawF3();$('#f3play').textContent='Pause';
+  f3.timer=setInterval(()=>{if(f3.b>=S0.screen.subs.length-1){clearInterval(f3.timer);f3.timer=null;$('#f3play').textContent='Play';return;}f3.b++;drawF3();},120);}
+
+/* ---------- move 04: posterior weights ---------- */
+const f4={k:S0.draws.length,timer:null};
+function drawF4(){const w=S0,x0=118,x1=612,n=w.draws.length;let s='';
+  for(const t of [0,0.25,0.5,0.75,1]){const x=x0+t*(x1-x0);s+=`<line class="gridl" x1="${x}" x2="${x}" y1="18" y2="214"/><text x="${x}" y="232" text-anchor="middle">${t}</text>`;}
+  s+=`<text class="axl" x="${(x0+x1)/2}" y="247" text-anchor="middle">composition weight</text>`;
+  MODELS.forEach((m,j)=>{const y=42+j*48;s+=`<text class="inkt" x="12" y="${y+4}">${m.name}</text>`;
+    if(!w.screen.active[j]){s+=`<text x="${x0+8}" y="${y+4}">screened out · weight 0</text>`;return;}
+    for(let d=0;d<Math.min(f4.k,n);d++){const jit=((d*37+j*11)%23-11);s+=`<circle class="f${j+1}" fill-opacity="0.45" cx="${f1d(x0+w.draws[d][j]*(x1-x0))}" cy="${y+jit}" r="2.3"/>`;}
+    if(f4.k>=n){const xm=x0+w.wbar[j]*(x1-x0);s+=`<line class="axis" stroke-width="2" x1="${f1d(xm)}" x2="${f1d(xm)}" y1="${y-15}" y2="${y+15}"/><text class="inkt" x="${f1d(xm+6)}" y="${y-15}">mean ${f2d(w.wbar[j])}</text>`;}});
+  $('#f4').innerHTML=s;
+  $('#f4read').innerHTML=f4.k>=n?`${n} posterior draws. One posterior per round, shared by every candidate.`:`Sampling: <b>${f4.k}</b> of ${n} draws`;}
+function playF4(){if(f4.timer){clearInterval(f4.timer);f4.timer=null;f4.k=S0.draws.length;drawF4();$('#f4play').textContent='Play';return;}f4.k=0;$('#f4play').textContent='Skip';
+  f4.timer=setInterval(()=>{f4.k+=5;if(f4.k>=S0.draws.length){f4.k=S0.draws.length;clearInterval(f4.timer);f4.timer=null;$('#f4play').textContent='Play';}drawF4();},45);}
+
+/* ---------- move 05: dispersion and trust ---------- */
+const SP0=spaghetti(S0);
+function drawF5(hg){const w=S0,dec=decide(w,ui.q,ui.beta);let s=frame()+unseen(w)+SP0.map(v=>path(v,'spag')).join('')+band(w.mu,w.uep)+path(w.mu,'mu')+pts(w.X,w.Y);
+  const y0=348,h=20;s+=`<text class="inkt" x="${ML-7}" y="${y0+14}" text-anchor="end">trust</text>`;
+  let st='';for(let g=0;g<G;g+=4)st+=`<stop offset="${(100*GRID[g]).toFixed(1)}%" style="stop-color:var(--ink);stop-opacity:${Math.pow(dec.trust[g],1.6).toFixed(3)}"/>`;
+  s+=`<defs><linearGradient id="tg" x1="0" x2="1" y1="0" y2="0">${st}</linearGradient></defs><rect x="${ML}" y="${y0}" width="${W-ML-MR}" height="${h}" fill="url(#tg)"/>`;
+  s+=`<rect x="${ML}" y="${y0}" width="${W-ML-MR}" height="${h}" fill="none" stroke="var(--rule)"/>`;
+  if(hg!==undefined){const x=sx(GRID[hg]);s+=`<line class="sig" stroke-width="1.2" x1="${f1d(x)}" x2="${f1d(x)}" y1="${MT}" y2="${y0+h}"/><circle class="sigf" cx="${f1d(x)}" cy="${f1d(sy(w.mu[hg]))}" r="4.5"/>`;
+    $('#f5read').innerHTML=`x = <b>${f2d(GRID[hg])}</b> · prediction <b>${f2d(w.mu[hg])}</b> · dispersion u = <b>${f3d(w.uep[hg])}</b> · residual scale <b>${f3d(w.ures)}</b> · trust <b>${f2d(dec.trust[hg])}</b>`;}
+  $('#f5').innerHTML=s;}
+function initF5(){const svg=$('#f5');let last;
+  const move=e=>{const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)/r.width*W,g=Math.max(0,Math.min(G-1,Math.round((px-ML)/(W-ML-MR)*(G-1))));last=g;drawF5(g);};
+  svg.addEventListener('pointermove',move);svg.addEventListener('pointerdown',move);
+  f5last=()=>last;}
+let f5last=()=>undefined;
+
+/* ---------- move 06: acquisition ---------- */
+function drawF6(){const w=S0,dec=decide(w,ui.q,ui.beta);
+  const up=dec.acq.map((a,g)=>f1d(sx(GRID[g]))+','+f1d(sy(a))),dn=w.mu.map((m,g)=>f1d(sx(GRID[g]))+','+f1d(sy(m))).reverse();
+  let s=frame()+unseen(w)+`<polygon class="sigf" opacity="0.16" points="${up.concat(dn).join(' ')}"/>`+path(w.mu,'mu')+path(dec.acq,'sig')+pts(w.X,w.Y);
+  const g=dec.next;s+=nextMark(GRID[g],dec.acq[g],'next experiment');
+  s+=`<text class="inkt" x="${ML+8}" y="${MT+14}">black: predicted response</text><text class="sigt" x="${ML+8}" y="${MT+29}">red: prediction + exploration bonus</text>`;
+  $('#f6').innerHTML=s;
+  const bonus=dec.acq.map((a,i)=>a-w.mu[i]);
+  $('#f6read').innerHTML=`Recommended x = <b>${f2d(GRID[g])}</b> · predicted <b>${f2d(w.mu[g])}</b> · bonus there <b>+${f3d(bonus[g])}</b> · largest bonus anywhere <b>+${f3d(Math.max(...bonus))}</b> · ceiling β·q = <b>${f3d(ui.beta*ui.q)}</b>`;}
+function syncSliders(){for(const id of ['q5','q6'])$('#'+id).value=ui.q;$('#b6').value=ui.beta;}
+function initSliders(){syncSliders();
+  const onQ=e=>{ui.q=+e.target.value;syncSliders();drawF5(f5last());drawF6();redrawLab();};
+  $('#q5').addEventListener('input',onQ);$('#q6').addEventListener('input',onQ);
+  $('#b6').addEventListener('input',e=>{ui.beta=+e.target.value;drawF6();redrawLab();});}
+
+/* ---------- live loop ---------- */
+function newLoop(){return{X:D0.X.slice(),Y:D0.Y.slice(),w:S0,hist:[S0.wbar.slice()],rng:makeRng(99),round:0,log:[]};}
+function stepLoop(L){const dec=decide(L.w,ui.q,ui.beta);if(dec.next<0||L.X.length>=46)return false;
+  const x=GRID[dec.next],y=truth(x)+NOISE*gauss(L.rng),before=L.w.wbar.slice();
+  L.X.push(x);L.Y.push(y);L.round++;L.w=compute(L.X,L.Y);L.hist.push(L.w.wbar.slice());
+  let jm=0;for(let j=1;j<M;j++)if(Math.abs(L.w.wbar[j]-before[j])>Math.abs(L.w.wbar[jm]-before[jm]))jm=j;
+  L.log.unshift(`Round ${L.round} · measured x = <b>${f2d(x)}</b>, got <b>${f2d(y)}</b> · ${MODELS[jm].name} ${f2d(before[jm])} → <b>${f2d(L.w.wbar[jm])}</b>`);return true;}
+let LAB=newLoop(),labBusy=false;
+function drawHist(L){const w=360,h=120,l=6,r=6,t=6,b=20,n=L.hist.length,xs=i=>n===1?(i?w-r:l):l+i*(w-l-r)/(n-1);let s='';
+  const rows=n===1?[L.hist[0],L.hist[0]]:L.hist;let base=rows.map(()=>0);
+  for(let j=0;j<M;j++){const top=rows.map((v,i)=>base[i]+v[j]);
+    const up=top.map((v,i)=>f1d(xs(i))+','+f1d(t+(1-v)*(h-t-b))),dn=base.map((v,i)=>f1d(xs(i))+','+f1d(t+(1-v)*(h-t-b))).reverse();
+    s+=`<polygon class="f${j+1}" fill-opacity="0.85" points="${up.concat(dn).join(' ')}"/>`;base=top;}
+  s+=`<text x="${l}" y="${h-5}">start</text><text x="${w-r}" y="${h-5}" text-anchor="end">${n===1?'run an experiment':'round '+(n-1)}</text>`;
+  $('#labHist').innerHTML=s;}
+function redrawLab(pop){loopChart($('#labSvg'),LAB.w,{truth:$('#labTruth').checked,pop});bars($('#labBars'),LAB.w);drawHist(LAB);
+  $('#labLog').innerHTML=LAB.log.map(t=>`<li>${t}</li>`).join('')+`<li>Start · ${N0} records, all on the left</li>`;
+  const full=LAB.X.length>=46;$('#labRun').disabled=full||labBusy;$('#labRun5').disabled=full||labBusy;}
+function runLab(k){if(labBusy)return;labBusy=true;redrawLab();
+  const tick=()=>{const ok=stepLoop(LAB);k--;labBusy=ok&&k>0;redrawLab(true);if(labBusy)setTimeout(tick,REDUCED?0:700);};setTimeout(tick,20);}
+function initLab(){redrawLab();$('#labRun').addEventListener('click',()=>runLab(1));$('#labRun5').addEventListener('click',()=>runLab(5));
+  $('#labReset').addEventListener('click',()=>{labBusy=false;LAB=newLoop();redrawLab();});$('#labTruth').addEventListener('change',()=>redrawLab());}
+
+/* ---------- hero ---------- */
+const HERO={seq:[S0],i:0,timer:null,L:newLoop()};
+function drawHero(pop){const w=HERO.seq[HERO.i];loopChart($('#heroSvg'),w,{pop});bars($('#heroBars'),w);
+  $('#heroRead').innerHTML=HERO.i===0?`Start · <b>${N0}</b> measurements, four candidate models`:`Round <b>${HERO.i}</b> of 6 · <b>${w.X.length}</b> measurements`;}
+function playHero(){clearTimeout(HERO.timer);HERO.i=0;drawHero();
+  const tick=()=>{if(HERO.i>=6)return;if(HERO.seq.length<=HERO.i+1){stepLoop(HERO.L);HERO.seq.push(HERO.L.w);}HERO.i++;drawHero(true);HERO.timer=setTimeout(tick,1500);};
+  HERO.timer=setTimeout(tick,1300);}
+
+/* ---------- verification ---------- */
+function newV(){const w=S0;return{X:D0.X.slice(),Y:D0.Y.slice(),w,diag:diagnose(w),fault:-1,shift:0,rep:null,rng:makeRng(314),msg:''};}
+let V=newV();
+function drawV(){const w=V.w,pri=V.diag.filter(d=>d.count>=2);
+  let s=frame()+band(w.mu,w.uep)+path(w.mu,'mu')+pts(V.X,V.Y);
+  pri.forEach(d=>{s+=`<circle class="sig" cx="${f1d(sx(V.X[d.i]))}" cy="${f1d(sy(V.Y[d.i]))}" r="9.5"/>`;});
+  if(V.fault>=0&&!V.rep)s+=`<text class="sigt" x="${f1d(sx(V.X[V.fault])+13)}" y="${f1d(sy(V.Y[V.fault])+4)}">injected error</text>`;
+  if(V.rep)V.rep.forEach(r=>{const x=f1d(sx(V.X[r.i])),c=r.group==='priority'?'var(--signal)':'var(--good)';
+    s+=`<line x1="${x}" x2="${x}" y1="${f1d(sy(r.orig))}" y2="${f1d(sy(r.val))}" stroke="${c}" stroke-width="2.5"/><circle cx="${x}" cy="${f1d(sy(r.val))}" r="5" fill="var(--panel)" stroke="${c}" stroke-width="2.5"/>`;});
+  s+=`<text class="inkt" x="${ML+8}" y="${MT+14}">ring: two or more flags</text>`;
+  $('#vSvg').innerHTML=s;
+  const lamp=on=>`<span class="lamp${on?' on':''}"></span>`,repOf=i=>V.rep&&V.rep.find(r=>r.i===i);
+  let rows=V.diag.filter(d=>d.count>=1).sort((a,b)=>b.count-a.count||a.pval-b.pval).slice(0,7);
+  if(V.rep)V.rep.filter(r=>r.group==='control').forEach(r=>{rows.push(V.diag[r.i]);});
+  let t=`<thead><tr><th>Record</th><th>Nonconf.</th><th>Influence</th><th>Isolation</th><th>Mahal.</th><th>Status</th><th class="num">Value → repeat</th><th class="num">|Δ|</th></tr></thead><tbody>`;
+  rows.forEach(d=>{const r=repOf(d.i),st=d.count>=2?'<span class="pill pri">priority</span>':d.count===1?'<span class="pill">one flag</span>':'<span class="pill ok">control</span>';
+    t+=`<tr><td class="mono">#${d.i+1}</td>${d.flags.map(f=>`<td>${lamp(f)}</td>`).join('')}<td>${st}</td><td class="num">${f2d(r?r.orig:V.Y[d.i])}${r?' → '+f2d(r.val):''}</td><td class="num">${r?f2d(Math.abs(r.val-r.orig)):'·'}</td></tr>`;});
+  $('#vTable').innerHTML=t+'</tbody>';
+  $('#vRead').innerHTML=V.msg||`${pri.length} record${pri.length===1?'':'s'} with two or more flags in the clean record. Flags mark records to check; most will repeat well.`;
+  $('#vFault').disabled=V.fault>=0;$('#vRepeat').textContent=V.rep?'Replace with repeated values':'Repeat flagged records';}
+function vFault(){const cand=V.diag.filter(d=>d.count===0&&d.i>=3&&d.i<=N0-4).map(d=>d.i),i=cand[Math.floor(V.rng()*cand.length)];if(i===undefined)return;
+  const sh=V.Y[i]>0.45?-0.3:0.3;V.Y[i]+=sh;V.fault=i;V.shift=sh;V.rep=null;V.w=compute(V.X,V.Y);V.diag=diagnose(V.w);const d=V.diag[i];
+  V.msg=`Record <b>#${i+1}</b> was shifted by <b>${sh>0?'+':''}${f2d(sh)}</b>. It now carries <b>${d.count}</b> flag${d.count===1?'':'s'}. The model was refitted with the faulty value in the record.`;drawV();}
+function vRepeat(){if(V.rep){V.rep.filter(r=>r.group==='priority').forEach(r=>{V.Y[r.i]=r.val;});V.rep=null;V.fault=-1;V.w=compute(V.X,V.Y);V.diag=diagnose(V.w);
+    V.msg='Repeated values replaced the flagged records and the model was refitted. In the paper, repeats were evaluated separately and were not fed back into acquisition.';drawV();return;}
+  const pri=V.diag.filter(d=>d.count>=2);if(!pri.length){V.msg='No record has two flags yet.';drawV();return;}
+  const used=new Set(),rep=[];
+  pri.forEach(d=>{rep.push({i:d.i,orig:V.Y[d.i],val:truth(V.X[d.i])+NOISE*gauss(V.rng),group:'priority'});
+    let best=-1;V.diag.forEach(c=>{if(c.count===0&&!used.has(c.i)&&(best<0||Math.abs(V.X[c.i]-V.X[d.i])<Math.abs(V.X[best]-V.X[d.i])))best=c.i;});
+    if(best>=0){used.add(best);rep.push({i:best,orig:V.Y[best],val:truth(V.X[best])+NOISE*gauss(V.rng),group:'control'});}});
+  V.rep=rep;const mad=g=>{const a=rep.filter(r=>r.group===g).map(r=>Math.abs(r.val-r.orig));return a.length?mean(a):0;};
+  V.msg=`Mean |Δ| on repetition: priority <b>${f2d(mad('priority'))}</b>, nearest unflagged controls <b>${f2d(mad('control'))}</b>.`;drawV();}
+function initV(){drawV();$('#vFault').addEventListener('click',vFault);$('#vRepeat').addEventListener('click',vRepeat);$('#vReset').addEventListener('click',()=>{V=newV();drawV();});}
+
+/* ---------- boot ---------- */
+function onceVisible(el,fn){if(REDUCED||!('IntersectionObserver' in window))return;const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){io.disconnect();fn();}});},{threshold:0.55});io.observe(el);}
+function boot(){initF1();drawF2();drawF3();drawF4();drawF5();initF5();drawF6();initSliders();initLab();initV();initResults();drawHero();
+  $('#f2play').addEventListener('click',playF2);$('#f2step').addEventListener('click',()=>{stopF2();f2.filled=N0;f2.i=(f2.i+1)%N0;drawF2();});
+  $('#f3play').addEventListener('click',playF3);$('#f4play').addEventListener('click',playF4);$('#heroPlay').addEventListener('click',playHero);
+  $('#copyBib').addEventListener('click',async e=>{try{await navigator.clipboard.writeText($('#bib').textContent);e.target.textContent='Copied';}catch(err){e.target.textContent='Select the text above to copy';}});
+  if(!REDUCED)playHero();
+  onceVisible($('#f1'),playF1);onceVisible($('#f2'),playF2);onceVisible($('#f3'),playF3);onceVisible($('#f4'),playF4);}
+boot();
+
+</script>
+</body>
+</html>

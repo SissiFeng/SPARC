@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "SPARC: Sparse Predictive Aggregation of Regression Components"
+type: software
+authors:
+  - family-names: Feng
+    given-names: Sissi
+    affiliation: "Acceleration Consortium, University of Toronto"
+version: "2.5.3rc4"
+doi: 10.5281/zenodo.24201692
+license: Apache-2.0
+repository-code: "https://github.com/SissiFeng/SPARC"
+preferred-citation:
+  type: article
+  title: "SPARC: Evidence-guided adaptive model composition for materials discovery"
+  authors:
+    - family-names: Feng
+      given-names: Sissi
+    - family-names: Han
+      given-names: Yuchen
+    - family-names: Zhang
+      given-names: Runze
+    - family-names: Bai
+      given-names: Jiaru
+    - family-names: Sutherland
+      given-names: Brandon
+    - family-names: Shayesteh Zeraati
+      given-names: Ali
+    - family-names: Hattrick-Simpers
+      given-names: Jason
+    - family-names: Bernales
+      given-names: Varinia
+    - family-names: Aspuru-Guzik
+      given-names: Alán
+    - family-names: Bai
+      given-names: Yang
+  journal: "arXiv preprint"
+  year: 2026
+  identifiers:
+    - type: other
+      value: "arXiv:2611.19050"
+  url: "https://arxiv.org/abs/2611.19050"
